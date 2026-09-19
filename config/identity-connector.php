@@ -14,6 +14,12 @@ return [
     'audience' => env('IDENTITY_AUDIENCE'),
 
     /*
+    | URL de base de l'API d'Identity (`/userinfo`, `/oauth/token`, `/api/v1`). Par défaut, l'émetteur ;
+    | à renseigner si Identity est joignable ailleurs (réseau interne) que par son URL publique.
+    */
+    'url' => env('IDENTITY_URL'),
+
+    /*
     | Où lire les clés de vérification. Par défaut `{issuer}/.well-known/jwks.json`. HTTPS exigé hors
     | environnements local et testing.
     */

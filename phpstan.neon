@@ -6,5 +6,7 @@ parameters:
     paths:
         - src
         - config
+        - workbench/app
+        - tests/TestCase.php
     # Le dossier `config/` d'un package est publié dans l'application : c'est lui qui lit l'environnement.
     noEnvCallsOutsideOfConfig: false
