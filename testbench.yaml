@@ -1,0 +1,31 @@
+# Application de test du connecteur (workbench) : la même API produit sert aux tests Pest et au smoke
+# contre un vrai Identity (`php scripts/smoke-connector.php`).
+env:
+  APP_ENV: local
+  APP_KEY: base64:c21va2Utd29ya2JlbmNoLWtleS0wMTIzNDU2Nzg5YWI=
+  APP_DEBUG: true
+  WORKBENCH_DB: workbench/database/smoke.sqlite
+  CACHE_STORE: file
+  IDENTITY_ISSUER: http://localhost:8100
+  IDENTITY_AUDIENCE: autodonuts-api
+  IDENTITY_WEBHOOK_SECRET: smoke-webhook-secret-0123456789abcdef
+  IDENTITY_SERVICE_CLIENT_ID: autodonuts-api-service
+  IDENTITY_SERVICE_CLIENT_SECRET: smoke-service-secret-0123456789abcdef
+  IDENTITY_JWKS_RELOAD_SECONDS: 1
+
+providers:
+  - AutoReflex\IdentityConnector\IdentityServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider
+
+migrations:
+  - workbench/database/migrations
+
+workbench:
+  start: /api/whoami
+  install: false
+  discovers:
+    web: false
+    api: false
+    commands: false
+    components: false
+    views: false

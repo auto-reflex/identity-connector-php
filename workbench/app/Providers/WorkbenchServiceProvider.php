@@ -18,6 +18,11 @@ class WorkbenchServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(ProfileStore::class, EloquentProfileStore::class);
+
+        // Sous `testbench serve` (smoke contre un vrai Identity), la base doit survivre aux requêtes : un fichier SQLite.
+        if (is_string($path = env('WORKBENCH_DB'))) {
+            config(['database.connections.workbench' => ['driver' => 'sqlite', 'database' => dirname(__DIR__, 3).'/'.$path, 'foreign_key_constraints' => true], 'database.default' => 'workbench']);
+        }
     }
 
     public function boot(): void

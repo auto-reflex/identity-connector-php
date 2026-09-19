@@ -33,10 +33,12 @@ return [
     /*
     | Cache des clés (JWKS). `store` : magasin de cache Laravel, `null` = celui par défaut.
     | `jwks_stale_hours` : durée pendant laquelle les dernières clés servent si Identity est injoignable.
+    | `jwks_reload_seconds` : intervalle minimal entre deux rechargements provoqués par un `kid` inconnu.
     */
     'cache' => [
         'store' => env('IDENTITY_CACHE_STORE'),
         'jwks_stale_hours' => (int) env('IDENTITY_JWKS_STALE_HOURS', 24),
+        'jwks_reload_seconds' => (int) env('IDENTITY_JWKS_RELOAD_SECONDS', 60),
     ],
 
     /*

@@ -19,6 +19,13 @@ Route::prefix('api')->group(function (): void {
         Route::get('/organizations/{id}', fn (string $id) => ['data' => Identity::organization($id) ?? abort(404)]);
     });
 
+    // État d'un compte lu en service à service (client_credentials) : de quoi se réconcilier après un webhook manqué.
+    Route::middleware('identity.auth')->get('/status/{id}', function (string $id) {
+        $status = Identity::client()->accountStatus($id);
+
+        return ['id' => $status->id, 'exists' => $status->exists, 'suspended' => $status->suspended];
+    });
+
     // Sans profil : authentification seule.
     Route::middleware('identity.auth')->get('/whoami', fn (Request $request) => ['sub' => Identity::token()->subject]);
 });

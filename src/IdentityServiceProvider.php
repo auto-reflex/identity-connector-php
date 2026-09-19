@@ -39,6 +39,7 @@ class IdentityServiceProvider extends ServiceProvider
                 http: $app->make(Http::class),
                 url: $url,
                 staleSeconds: (int) $config->get('identity-connector.cache.jwks_stale_hours') * 3600,
+                reloadIntervalSeconds: (int) $config->get('identity-connector.cache.jwks_reload_seconds'),
                 timeoutSeconds: (int) $config->get('identity-connector.http.timeout'),
             );
         });

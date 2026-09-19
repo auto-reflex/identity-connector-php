@@ -1,0 +1,288 @@
+<?php
+
+/*
+ * Porte de sortie de la phase 2 (ROADMAP) contre un vrai Identity : l'API de test du connecteur (workbench)
+ * authentifie une personne, crée son profil, lit l'API Identity avec le bon token, et reçoit les webhooks.
+ *
+ *   php scripts/smoke-connector.php
+ *
+ * Le script lance lui-même Identity (:8100), son worker de file et le workbench (:8110), puis les arrête.
+ * Prérequis : le dépôt `identity/` à côté de celui-ci (ou IDENTITY_DIR), sa base locale PostgreSQL démarrée,
+ * Mailpit sur :8028 (MAILPIT_URL). Il applique les migrations de la base locale d'Identity, y injecte les
+ * clients des produits et fixe le secret du client de service `autodonuts-api-service` (valeurs de
+ * développement de testbench.yaml).
+ */
+
+require __DIR__.'/../vendor/autoload.php';
+
+use GuzzleHttp\Client;
+use GuzzleHttp\Cookie\CookieJar;
+use Symfony\Component\Process\Process;
+
+const IDENTITY_URL = 'http://localhost:8100';
+const WORKBENCH_URL = 'http://127.0.0.1:8110';
+const WEBHOOK_SECRET = 'smoke-webhook-secret-0123456789abcdef';
+const SERVICE_SECRET = 'smoke-service-secret-0123456789abcdef';
+
+$connectorDir = dirname(__DIR__);
+$identityDir = realpath(getenv('IDENTITY_DIR') ?: $connectorDir.'/../identity');
+$mailpit = rtrim(getenv('MAILPIT_URL') ?: 'http://localhost:8028', '/');
+
+function step(string $label, bool $ok, string $detail = ''): void
+{
+    echo ($ok ? '  ✓ ' : '  ✗ ').$label.($detail !== '' ? " — {$detail}" : '')."\n";
+
+    if (! $ok) {
+        exit(1);
+    }
+}
+
+function field(string $html, string $name): string
+{
+    preg_match('/name="'.preg_quote($name, '/').'"\s+value="([^"]*)"/', $html, $m);
+
+    return html_entity_decode($m[1] ?? '');
+}
+
+function b64url(string $data): string
+{
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+if ($identityDir === false || ! is_file($identityDir.'/artisan')) {
+    fwrite(STDERR, "Dépôt identity/ introuvable : définissez IDENTITY_DIR.\n");
+    exit(1);
+}
+
+$identityEnv = [
+    'IDENTITY_WEBHOOK_AUTODONUTS_URL' => WORKBENCH_URL.'/identity/webhooks',
+    'IDENTITY_WEBHOOK_AUTODONUTS_SECRET' => WEBHOOK_SECRET,
+    'PHP_CLI_SERVER_WORKERS' => '4',
+];
+
+/** @var list<Process> $children */
+$children = [];
+register_shutdown_function(function () use (&$children): void {
+    foreach ($children as $process) {
+        $process->stop(3);
+    }
+    // Le serveur HTTP intégré lance des workers, et `testbench serve` un sous-processus : on les arrête par leur port.
+    exec('pkill -f "php -S localhost:8100" 2>/dev/null; pkill -f "php -S 127.0.0.1:8110" 2>/dev/null');
+});
+
+/**
+ * @param  list<string>  $command
+ */
+$run = function (array $command, string $cwd, array $env = []): string {
+    $process = new Process($command, $cwd, $env, timeout: 120);
+    $process->run();
+
+    if (! $process->isSuccessful()) {
+        fwrite(STDERR, $process->getOutput().$process->getErrorOutput());
+        exit(1);
+    }
+
+    return $process->getOutput();
+};
+
+/**
+ * Exécute du PHP dans l'application Identity (tinker) et renvoie la dernière ligne JSON imprimée.
+ *
+ * @return array<string, mixed>
+ */
+$tinker = function (string $code) use ($run, $identityDir, $identityEnv): array {
+    $output = $run([PHP_BINARY, 'artisan', 'tinker', '--execute='.$code], $identityDir, $identityEnv);
+
+    foreach (array_reverse(preg_split('/\R/', trim($output))) as $line) {
+        if (str_starts_with(trim($line), '{')) {
+            return json_decode(trim($line), true) ?? [];
+        }
+    }
+
+    return [];
+};
+
+$waitFor = function (callable $check, int $seconds = 25) {
+    for ($i = 0; $i < $seconds * 4; $i++) {
+        if (($result = $check()) !== null && $result !== false) {
+            return $result;
+        }
+        usleep(250_000);
+    }
+
+    return null;
+};
+
+foreach ([8100, 8110] as $port) {
+    if (($socket = @fsockopen('127.0.0.1', $port, timeout: 0.5)) || ($socket = @fsockopen('::1', $port, timeout: 0.5))) {
+        fclose($socket);
+        fwrite(STDERR, "Le port {$port} est déjà utilisé : arrêtez le serveur qui l'occupe avant le smoke.\n");
+        exit(1);
+    }
+}
+
+echo "Préparation : Identity ({$identityDir}) et workbench\n";
+
+$run([PHP_BINARY, 'artisan', 'migrate', '--force'], $identityDir, $identityEnv);
+$run([PHP_BINARY, 'artisan', 'db:seed', '--class=Database\\Seeders\\ClientsSeeder', '--force'], $identityDir, $identityEnv);
+$tinker('App\Modules\Auth\OAuth\OAuthClient::query()->findOrFail("autodonuts-api-service")->forceFill(["secret" => "'.SERVICE_SECRET.'"])->save(); echo json_encode(["ok" => true]);');
+
+touch($connectorDir.'/workbench/database/smoke.sqlite');
+$run([PHP_BINARY, 'vendor/bin/testbench', 'migrate:fresh', '--force'], $connectorDir);
+
+$serve = fn (array $command, string $cwd, array $env = []) => tap(new Process($command, $cwd, $env, timeout: null), function (Process $process) use (&$children): void {
+    $process->start();
+    $children[] = $process;
+});
+// Comme `artisan serve` : le routeur du framework se lance depuis le dossier public.
+$serve([PHP_BINARY, '-S', 'localhost:8100', '../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php'], $identityDir.'/public', $identityEnv);
+$serve([PHP_BINARY, 'artisan', 'queue:work', '--sleep=1', '--tries=3', '--max-time=600'], $identityDir, $identityEnv);
+$serve([PHP_BINARY, 'vendor/bin/testbench', 'serve', '--host=127.0.0.1', '--port=8110'], $connectorDir);
+
+$http = new Client(['base_uri' => IDENTITY_URL, 'cookies' => new CookieJar, 'allow_redirects' => false, 'http_errors' => false]);
+$plain = new Client(['base_uri' => IDENTITY_URL, 'http_errors' => false]);
+$workbench = new Client(['base_uri' => WORKBENCH_URL, 'http_errors' => false, 'headers' => ['Accept' => 'application/json']]);
+
+$up = $waitFor(function () use ($plain, $workbench) {
+    try {
+        return $plain->get('/health/ready')->getStatusCode() === 200 && $workbench->get('/api/whoami')->getStatusCode() === 401 ? true : null;
+    } catch (Throwable) {
+        return null;
+    }
+});
+step('Identity, worker et workbench démarrés', $up === true);
+
+$metadata = json_decode((string) $plain->get('/.well-known/oauth-authorization-server')->getBody(), true);
+step('issuer d\'Identity = issuer configuré du workbench', ($metadata['issuer'] ?? '') === IDENTITY_URL, (string) ($metadata['issuer'] ?? ''));
+
+/** @return array<string, mixed> */
+$api = function (string $path, ?string $token) use ($workbench): array {
+    $response = $workbench->get($path, ['headers' => $token === null ? [] : ['Authorization' => 'Bearer '.$token]]);
+
+    return ['status' => $response->getStatusCode(), 'json' => json_decode((string) $response->getBody(), true)];
+};
+
+// --- Personne : inscription, vérification de l'email, autorisation PKCE (comme une application produit).
+$email = 'connector+'.bin2hex(random_bytes(4)).'@example.test';
+$password = 'mot-de-passe-de-smoke-test';
+$redirect = 'autodonuts://oauth/callback';
+
+$page = (string) $http->get('/register')->getBody();
+$http->post('/register', ['form_params' => [
+    '_token' => field($page, '_token'), 'name' => 'Connecteur Smoke', 'email' => $email,
+    'password' => $password, 'password_confirmation' => $password,
+]]);
+
+$link = $waitFor(function () use ($plain, $mailpit, $email) {
+    $found = json_decode((string) $plain->get("{$mailpit}/api/v1/search", ['query' => ['query' => "to:{$email}"]])->getBody(), true);
+    foreach ($found['messages'] ?? [] as $message) {
+        $body = json_decode((string) $plain->get("{$mailpit}/api/v1/message/{$message['ID']}")->getBody(), true);
+        if (preg_match('#https?://[^\s"<>]+/email/verify/[^\s"<>]+#', html_entity_decode($body['HTML'] ?? ''), $m)) {
+            return $m[0];
+        }
+    }
+
+    return null;
+});
+step('inscription et email de vérification reçu', $link !== null);
+$http->get(preg_replace('#^https?://[^/]+#', IDENTITY_URL, $link));
+
+/** @return array{access_token: string, refresh_token: string} */
+$login = function () use ($http, $plain, $redirect): array {
+    $verifier = b64url(random_bytes(64));
+    $state = b64url(random_bytes(12));
+    $query = http_build_query([
+        'client_id' => 'autodonuts-mobile', 'redirect_uri' => $redirect, 'response_type' => 'code',
+        'scope' => 'profile email autodonuts:access vehicles:read vehicles:write organizations:read', 'state' => $state,
+        'code_challenge' => b64url(hash('sha256', $verifier, true)), 'code_challenge_method' => 'S256',
+    ]);
+
+    $response = $http->get('/oauth/authorize?'.$query);
+    if ($response->getStatusCode() === 200) {
+        $html = (string) $response->getBody();
+        $response = $http->post('/oauth/authorize', ['form_params' => [
+            '_token' => field($html, '_token'), 'state' => $state, 'client_id' => 'autodonuts-mobile', 'auth_token' => field($html, 'auth_token'),
+        ]]);
+    }
+    parse_str((string) parse_url($response->getHeaderLine('Location'), PHP_URL_QUERY), $callback);
+
+    return json_decode((string) $plain->post('/oauth/token', ['form_params' => [
+        'grant_type' => 'authorization_code', 'client_id' => 'autodonuts-mobile', 'redirect_uri' => $redirect,
+        'code' => $callback['code'] ?? '', 'code_verifier' => $verifier,
+    ]])->getBody(), true);
+};
+
+$tokens = $login();
+step('tokens Identity obtenus (autorisation PKCE)', isset($tokens['access_token']));
+$access = $tokens['access_token'];
+$sub = json_decode((string) $plain->get('/userinfo', ['headers' => ['Authorization' => 'Bearer '.$access]])->getBody(), true)['sub'] ?? '';
+
+echo "\nAuthentification par le connecteur\n";
+
+$whoami = $api('/api/whoami', $access);
+step('token valide : accepté sans appel à Identity (JWKS, émetteur, audience)', $whoami['status'] === 200 && ($whoami['json']['sub'] ?? null) === $sub, json_encode($whoami));
+step('sans token : 401', $api('/api/whoami', null)['status'] === 401);
+step('token tronqué : 401', $api('/api/whoami', substr($access, 0, -4).'AAAA')['status'] === 401);
+
+$exchange = json_decode((string) $plain->post('/oauth/token', ['form_params' => [
+    'grant_type' => 'urn:ietf:params:oauth:grant-type:token-exchange', 'client_id' => 'autodonuts-mobile',
+    'subject_token' => $access, 'audience' => 'identity-api',
+]])->getBody(), true);
+step('token identity-api présenté à l\'API produit : 401 (audience)', $api('/api/whoami', $exchange['access_token'] ?? '')['status'] === 401);
+$scope = $api('/api/needs-scope', $access);
+step('scope manquant (vehicles:read absent du token produit) : 403', $scope['status'] === 403 && ($scope['json']['error'] ?? '') === 'insufficient_scope');
+
+echo "\nProfil local\n";
+
+$first = $api('/api/me', $access);
+step('première requête : profil créé depuis /userinfo', $first['status'] === 200 && ($first['json']['identity_user_id'] ?? null) === $sub && ($first['json']['display_name'] ?? null) === 'Connecteur Smoke', json_encode($first));
+$second = $api('/api/me', $access);
+step('deuxième requête : même profil, pas de doublon', ($second['json']['id'] ?? null) === ($first['json']['id'] ?? 0));
+
+echo "\nAPI Identity\n";
+
+$empty = $api('/api/organizations', $access);
+step('organisations : liste vide, via échange de token', $empty['status'] === 200 && $empty['json']['data'] === []);
+
+$page = (string) $http->get('/account/organizations')->getBody();
+$created = $http->post('/account/organizations', ['form_params' => ['_token' => field($page, '_token'), 'name' => 'Garage Connecteur '.bin2hex(random_bytes(2))]]);
+$orgSlug = basename($created->getHeaderLine('Location'));
+$organizations = $api('/api/organizations', $access);
+$orgId = $organizations['json']['data'][0]['id'] ?? '';
+step('organisation créée dans Identity : lue avec le rôle owner', count($organizations['json']['data'] ?? []) === 1 && $organizations['json']['data'][0]['role'] === 'owner' && $organizations['json']['data'][0]['slug'] === $orgSlug);
+$detail = $api('/api/organizations/'.$orgId, $access);
+step('détail : membres avec nom, sans email', ($detail['json']['data']['members'][0]['name'] ?? null) === 'Connecteur Smoke' && ! str_contains(json_encode($detail['json']), $email));
+step('organisation inconnue ou d\'autrui : 404', $api('/api/organizations/01J0NOBODY000000000000000Z', $access)['status'] === 404);
+
+$status = $api('/api/status/'.$sub, $access);
+step('statut de compte en service à service (client_credentials)', $status['status'] === 200 && $status['json'] === ['id' => $sub, 'exists' => true, 'suspended' => false]);
+step('compte inconnu : exists = false', ($api('/api/status/01J0NOBODY000000000000000Z', $access)['json']['exists'] ?? true) === false);
+
+echo "\nRotation de clé\n";
+
+$run([PHP_BINARY, 'artisan', 'identity:keys:rotate'], $identityDir, $identityEnv);
+$rotated = $login();
+$claims = json_decode(base64_decode(strtr(explode('.', $rotated['access_token'])[0], '-_', '+/')), true);
+$oldKid = json_decode(base64_decode(strtr(explode('.', $access)[0], '-_', '+/')), true)['kid'] ?? '';
+step('nouveau token signé par une autre clé', ($claims['kid'] ?? '') !== '' && $claims['kid'] !== $oldKid, "{$oldKid} → {$claims['kid']}");
+sleep(2);
+step('le workbench suit la rotation sans redémarrage', $api('/api/whoami', $rotated['access_token'])['status'] === 200);
+step('un token signé avant la rotation reste accepté', $api('/api/whoami', $access)['status'] === 200);
+$access = $rotated['access_token'];
+
+echo "\nWebhooks : suspension et réactivation\n";
+
+$suspend = $tinker('$user = App\Modules\Auth\Models\User::query()->findOrFail("'.$sub.'"); $actor = App\Modules\Auth\Models\User::factory()->create(); app(App\Modules\Auth\Actions\SuspendUser::class)->handle($user, $actor, "smoke connecteur"); echo json_encode(["actor" => $actor->id]);');
+$blocked = $waitFor(fn () => $api('/api/me', $access)['status'] === 403 ? true : null);
+step('webhook account.suspended reçu : profil bloqué sans attendre l\'expiration du token', $blocked === true);
+step('le token, lui, reste valide localement (aucun contrôle de révocation)', $api('/api/whoami', $access)['status'] === 200);
+$suspended = $api('/api/status/'.$sub, $access);
+step('réconciliation : le statut lu à Identity dit « suspendu »', ($suspended['json']['suspended'] ?? false) === true);
+$delivery = $tinker('echo json_encode(App\Webhooks\Models\WebhookDelivery::query()->where("event_type", "account.suspended")->latest("id")->first(["status", "attempts", "endpoint"])->toArray());');
+step('livraison tracée côté Identity', ($delivery['status'] ?? '') === 'delivered' && ($delivery['endpoint'] ?? '') === 'autodonuts', json_encode($delivery));
+
+$tinker('$user = App\Modules\Auth\Models\User::query()->findOrFail("'.$sub.'"); $actor = App\Modules\Auth\Models\User::query()->findOrFail("'.$suspend['actor'].'"); app(App\Modules\Auth\Actions\ReinstateUser::class)->handle($user, $actor); echo json_encode(["ok" => true]);');
+$restored = $waitFor(fn () => $api('/api/me', $access)['status'] === 200 ? true : null);
+step('webhook account.reinstated reçu : profil rétabli', $restored === true);
+
+echo "\nTout est vert.\n";
