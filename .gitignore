@@ -1,0 +1,10 @@
+/vendor
+/build
+.phpunit.result.cache
+/.phpunit.cache
+composer.lock
+.DS_Store
+.env
+/workbench/storage
+/workbench/bootstrap/cache
+/workbench/database/*.sqlite
