@@ -23,7 +23,13 @@ Route::prefix('api')->group(function (): void {
     Route::middleware('identity.auth')->get('/status/{id}', function (string $id) {
         $status = Identity::client()->accountStatus($id);
 
-        return ['id' => $status->id, 'exists' => $status->exists, 'suspended' => $status->suspended];
+        return [
+            'id' => $status->id,
+            'exists' => $status->exists,
+            'suspended' => $status->suspended,
+            'deletion' => $status->deletion,
+            'deletion_scheduled_for' => $status->deletionScheduledFor?->toIso8601String(),
+        ];
     });
 
     // Sans profil : authentification seule.

@@ -1,7 +1,7 @@
 # AutoReflex Identity Connector
 
 Package Laravel commun des APIs AutoReflex (AutoDonuts, AutoTrackly, AutoReflexPro, Map) pour s'appuyer sur le
-service [Identity](../identity). Contrat : `AR-032` et `AR-052` à `AR-054` dans
+service [Identity](../identity). Contrat : `AR-032` et `AR-052` à `AR-056` dans
 `docs/ecosystem/DECISIONS.md`.
 
 Ce qu'il fait :
@@ -10,7 +10,7 @@ Ce qu'il fait :
   émetteur, audience de l'API, expiration, scopes — sans appeler Identity ;
 - **crée le profil local** à la première requête d'une personne (lecture de `/userinfo`) ;
 - **appelle l'API Identity** : organisations de la personne, statut d'un compte en service à service ;
-- **reçoit les webhooks** signés d'Identity (suspension et réactivation d'un compte) ;
+- **reçoit les webhooks** signés d'Identity (suspension, réactivation et suppression de compte) et **accuse l'effacement** ;
 - fournit un **Identity simulé** pour tester une API produit sans service Identity.
 
 Il ne possède aucune table, aucun modèle, aucune route métier : le produit garde ses profils.

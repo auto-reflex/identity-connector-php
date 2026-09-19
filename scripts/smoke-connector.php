@@ -255,7 +255,7 @@ step('détail : membres avec nom, sans email', ($detail['json']['data']['members
 step('organisation inconnue ou d\'autrui : 404', $api('/api/organizations/01J0NOBODY000000000000000Z', $access)['status'] === 404);
 
 $status = $api('/api/status/'.$sub, $access);
-step('statut de compte en service à service (client_credentials)', $status['status'] === 200 && $status['json'] === ['id' => $sub, 'exists' => true, 'suspended' => false]);
+step('statut de compte en service à service (client_credentials)', $status['status'] === 200 && ($status['json']['exists'] ?? null) === true && ($status['json']['suspended'] ?? null) === false && array_key_exists('deletion', $status['json']) && $status['json']['deletion'] === null);
 step('compte inconnu : exists = false', ($api('/api/status/01J0NOBODY000000000000000Z', $access)['json']['exists'] ?? true) === false);
 
 echo "\nRotation de clé\n";
@@ -284,5 +284,54 @@ step('livraison tracée côté Identity', ($delivery['status'] ?? '') === 'deliv
 $tinker('$user = App\Modules\Auth\Models\User::query()->findOrFail("'.$sub.'"); $actor = App\Modules\Auth\Models\User::query()->findOrFail("'.$suspend['actor'].'"); app(App\Modules\Auth\Actions\ReinstateUser::class)->handle($user, $actor); echo json_encode(["ok" => true]);');
 $restored = $waitFor(fn () => $api('/api/me', $access)['status'] === 200 ? true : null);
 step('webhook account.reinstated reçu : profil rétabli', $restored === true);
+
+echo "\nSuppression de compte\n";
+
+$signIn = function () use ($http, $email, $password): int {
+    $page = (string) $http->get('/login')->getBody();
+
+    return $http->post('/login', ['form_params' => ['_token' => field($page, '_token'), 'email' => $email, 'password' => $password]])->getStatusCode();
+};
+$requestDeletion = function () use ($http, $email, $password): int {
+    $page = (string) $http->get('/account/delete')->getBody();
+
+    return $http->post('/account/delete', ['form_params' => ['_token' => field($page, '_token'), 'password' => $password, 'email_confirmation' => $email]])->getStatusCode();
+};
+$deletionStatus = function () use ($api, $sub, $access) {
+    $response = $api('/api/status/'.$sub, $access);
+
+    return $response['status'] === 200 ? ($response['json']['deletion'] ?? null) : 'HTTP '.$response['status'].' '.json_encode($response['json']);
+};
+
+step('reconnexion après la réactivation', $signIn() === 302);
+$inventory = (string) $http->get('/account/delete')->getBody();
+step('page de suppression : inventaire avec l\'organisation à membre unique', str_contains($inventory, 'sera supprimée') && str_contains($inventory, 'Garage Connecteur'));
+
+step('suppression demandée : déconnecté, redirigé vers la connexion', $requestDeletion() === 302 && str_contains($http->get('/account/profile')->getHeaderLine('Location'), '/login'));
+$locked = $waitFor(fn () => $api('/api/me', $access)['status'] === 403 ? true : null);
+step('webhook account.deletion_requested : profil verrouillé côté produit', $locked === true);
+step('statut lu à Identity : suppression en attente', $deletionStatus() === 'pending', (string) $deletionStatus());
+
+step('reconnexion pendant le délai', $signIn() === 302);
+$unlocked = $waitFor(fn () => $api('/api/me', $access)['status'] === 200 ? true : null);
+step('webhook account.deletion_cancelled : la reconnexion annule, profil déverrouillé', $unlocked === true && $deletionStatus() === null);
+
+step('nouvelle demande de suppression', $requestDeletion() === 302);
+$waitFor(fn () => $api('/api/me', $access)['status'] === 403 ? true : null);
+$tinker('App\Modules\Auth\Models\AccountDeletion::query()->where("user_id", "'.$sub.'")->where("status", "pending")->update(["due_at" => now()->subMinute()]); echo json_encode(["ok" => true]);');
+$run([PHP_BINARY, 'artisan', 'identity:accounts:process-deletions'], $identityDir, $identityEnv);
+$acknowledged = $waitFor(function () use ($tinker, $sub) {
+    $ack = $tinker('echo json_encode(App\Modules\Auth\Models\AccountDeletionAcknowledgement::query()->whereIn("deletion_id", App\Modules\Auth\Models\AccountDeletion::query()->where("user_id", "'.$sub.'")->select("id"))->pluck("outcome", "product")->all());');
+
+    return ($ack['autodonuts'] ?? null) === 'acknowledged' ? $ack : null;
+}, 40);
+step('webhook account.deletion_due : le produit efface son profil et accuse à Identity', $acknowledged !== null, json_encode($acknowledged));
+
+$run([PHP_BINARY, 'artisan', 'identity:accounts:process-deletions'], $identityDir, $identityEnv);
+$gone = $tinker('echo json_encode(["user" => App\Modules\Auth\Models\User::query()->whereKey("'.$sub.'")->exists(), "org" => App\Modules\Organizations\Models\Organization::query()->where("slug", "'.$orgSlug.'")->exists(), "proof" => App\Modules\Auth\Models\AccountDeletion::query()->where("user_id", "'.$sub.'")->where("status", "completed")->exists()]);');
+step('tous les accusés reçus : compte et organisation à membre unique effacés, preuve conservée', $gone === ['user' => false, 'org' => false, 'proof' => true], json_encode($gone));
+step('statut : le compte n\'existe plus', ($api('/api/status/'.$sub, $access)['json']['exists'] ?? true) === false);
+$signIn();
+step('la connexion avec l\'ancienne adresse ne mène plus à aucun compte', str_contains($http->get('/account/profile')->getHeaderLine('Location'), '/login'));
 
 echo "\nTout est vert.\n";
