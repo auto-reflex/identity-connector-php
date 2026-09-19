@@ -59,6 +59,18 @@ return [
     ],
 
     /*
+    | Réception des webhooks d'Identity (AR-053). Sans secret configuré, la route refuse tout (401).
+    | `secrets` : le secret courant puis, pendant une rotation, l'ancien. `tolerance` : écart d'horloge admis
+    | (secondes). `replay_days` : durée pendant laquelle un événement déjà traité est refusé.
+    */
+    'webhooks' => [
+        'path' => env('IDENTITY_WEBHOOK_PATH', 'identity/webhooks'),
+        'secrets' => array_values(array_filter([env('IDENTITY_WEBHOOK_SECRET'), env('IDENTITY_WEBHOOK_PREVIOUS_SECRET')])),
+        'tolerance' => (int) env('IDENTITY_WEBHOOK_TOLERANCE', 300),
+        'replay_days' => (int) env('IDENTITY_WEBHOOK_REPLAY_DAYS', 7),
+    ],
+
+    /*
     | Appels HTTP vers Identity : timeouts courts, pour dégrader plutôt qu'attendre (AR-033).
     */
     'http' => [

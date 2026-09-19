@@ -3,14 +3,19 @@
 namespace AutoReflex\IdentityConnector;
 
 use AutoReflex\IdentityConnector\Client\IdentityClient;
+use AutoReflex\IdentityConnector\Http\Controllers\IdentityWebhookController;
 use AutoReflex\IdentityConnector\Http\Middleware\AuthenticateIdentity;
 use AutoReflex\IdentityConnector\Http\Middleware\ResolveProfile;
+use AutoReflex\IdentityConnector\Http\Middleware\VerifyIdentitySignature;
 use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
 use AutoReflex\IdentityConnector\Jwt\KeySetProvider;
 use AutoReflex\IdentityConnector\Jwt\RemoteKeySet;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Encryption\StringEncrypter;
 use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
@@ -57,6 +62,9 @@ class IdentityServiceProvider extends ServiceProvider
             array_filter((array) $app['config']->get('identity-connector.exchange.client_secrets'), 'is_string'),
         ));
 
+        $this->app->when(IdentityWebhookController::class)->needs(Cache::class)
+            ->give(fn ($app) => $app['cache']->store($app['config']->get('identity-connector.cache.store')));
+
         $this->app->scoped(IdentityManager::class, fn ($app) => new IdentityManager($app->make(Request::class), $app->make(IdentityClient::class)));
     }
 
@@ -65,9 +73,30 @@ class IdentityServiceProvider extends ServiceProvider
         Route::aliasMiddleware('identity.auth', AuthenticateIdentity::class);
         Route::aliasMiddleware('identity.profile', ResolveProfile::class);
 
+        $this->registerWebhookRoute();
+
         if ($this->app->runningInConsole()) {
             $this->publishes([__DIR__.'/../config/identity-connector.php' => config_path('identity-connector.php')], 'identity-connector-config');
         }
+    }
+
+    /**
+     * Sans secret configuré, la route existe mais refuse tout (401) : elle échoue fermée, et l'échec reste
+     * visible côté Identity plutôt que de disparaître derrière un 404.
+     */
+    private function registerWebhookRoute(): void
+    {
+        $path = config('identity-connector.webhooks.path');
+
+        if (! is_string($path) || $path === '') {
+            return;
+        }
+
+        RateLimiter::for('identity-webhooks', fn (Request $request) => Limit::perMinute(600)->by($request->ip()));
+
+        Route::post($path, IdentityWebhookController::class)
+            ->middleware(['throttle:identity-webhooks', VerifyIdentitySignature::class])
+            ->name('identity-connector.webhooks');
     }
 
     private function baseUrl(): string

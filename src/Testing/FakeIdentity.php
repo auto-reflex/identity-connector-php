@@ -2,6 +2,7 @@
 
 namespace AutoReflex\IdentityConnector\Testing;
 
+use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Firebase\JWT\JWT;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -16,6 +17,9 @@ use Illuminate\Support\Str;
  */
 final class FakeIdentity
 {
+    /** Secret de webhook des tests : `install()` le configure, `webhook()` signe avec lui. */
+    public const WEBHOOK_SECRET = 'test-webhook-secret-0123456789abcdef0123';
+
     /** @var list<SigningKey> */
     private array $published = [];
 
@@ -58,6 +62,7 @@ final class FakeIdentity
         Config::set('identity-connector.audience', $audience);
         Config::set('identity-connector.url', null);
         Config::set('identity-connector.jwks_url', null);
+        Config::set('identity-connector.webhooks.secrets', [self::WEBHOOK_SECRET]);
 
         Http::fake([rtrim($issuer, '/').'/*' => fn (Request $request) => $fake->respond($request)]);
 
@@ -204,6 +209,33 @@ final class FakeIdentity
     public function serviceTokenCalls(): int
     {
         return $this->serviceTokenCalls;
+    }
+
+    /**
+     * Corps et en-têtes d'un webhook d'Identity correctement signé, à poster sur la route du connecteur :
+     *
+     *     ['body' => $body, 'server' => $server] = $identity->webhook('account.suspended', $userId);
+     *     $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertNoContent();
+     *
+     * @return array{body: string, server: array<string, string>}
+     */
+    public function webhook(string $type, string $userId, ?string $eventId = null, ?int $timestamp = null): array
+    {
+        $body = json_encode([
+            'id' => $eventId ?? (string) Str::ulid(),
+            'type' => $type,
+            'version' => 1,
+            'occurred_at' => Carbon::now('UTC')->toIso8601String(),
+            'data' => ['user_id' => $userId],
+        ], JSON_THROW_ON_ERROR);
+
+        return [
+            'body' => $body,
+            'server' => [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, self::WEBHOOK_SECRET, $timestamp ?? Carbon::now()->getTimestamp()),
+            ],
+        ];
     }
 
     public function userInfoCalls(): int
