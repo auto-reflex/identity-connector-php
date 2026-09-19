@@ -25,6 +25,16 @@ final class FakeIdentity
     /** @var array<string, true> */
     private array $revoked = [];
 
+    /** @var array<string, array{name: string, slug: string, created_at: string, members: array<string, string>}> */
+    private array $organizations = [];
+
+    /** @var array<string, string> secrets des clients de service, par `client_id` */
+    private array $serviceClients = [];
+
+    private int $exchangeCalls = 0;
+
+    private int $serviceTokenCalls = 0;
+
     /** @var array<string, mixed>|null */
     private ?array $userInfoOverride = null;
 
@@ -78,6 +88,33 @@ final class FakeIdentity
             'scope' => implode(' ', $scopes),
             ...$claims,
         ]);
+    }
+
+    /**
+     * Déclare une organisation Identity et ses membres (`userId => rôle`).
+     *
+     * @param  array<string, string>  $members
+     */
+    public function organization(string $id, string $name, array $members, ?string $slug = null): self
+    {
+        $this->organizations[$id] = [
+            'name' => $name,
+            'slug' => $slug ?? Str::slug($name),
+            'created_at' => Carbon::now()->toIso8601String(),
+            'members' => $members,
+        ];
+
+        return $this;
+    }
+
+    /**
+     * Enregistre le client de service de l'API (`client_credentials`) auprès d'Identity.
+     */
+    public function serviceClient(string $clientId, string $secret): self
+    {
+        $this->serviceClients[$clientId] = $secret;
+
+        return $this;
     }
 
     /**
@@ -159,6 +196,16 @@ final class FakeIdentity
         return $this;
     }
 
+    public function exchangeCalls(): int
+    {
+        return $this->exchangeCalls;
+    }
+
+    public function serviceTokenCalls(): int
+    {
+        return $this->serviceTokenCalls;
+    }
+
     public function userInfoCalls(): int
     {
         return $this->userInfoCalls;
@@ -180,8 +227,145 @@ final class FakeIdentity
                 ['Cache-Control' => 'public, max-age=300'],
             ),
             '/userinfo' => $this->userInfo($request),
-            default => Http::response(['error' => 'not_found'], 404),
+            '/oauth/token' => $this->token($request),
+            default => $this->api($request),
         };
+    }
+
+    /**
+     * @return PromiseInterface
+     */
+    private function token(Request $request)
+    {
+        $data = $request->data();
+
+        if (($data['grant_type'] ?? null) === 'client_credentials') {
+            $this->serviceTokenCalls++;
+            $clientId = (string) ($data['client_id'] ?? '');
+
+            if (! isset($this->serviceClients[$clientId]) || $this->serviceClients[$clientId] !== ($data['client_secret'] ?? null)) {
+                return Http::response(['error' => 'invalid_client'], 401);
+            }
+
+            $scopes = array_values(array_filter(explode(' ', (string) ($data['scope'] ?? ''))));
+
+            if ($scopes === [] || array_diff($scopes, ['vehicles:read', 'accounts:status']) !== []) {
+                return Http::response(['error' => 'invalid_scope'], 400);
+            }
+
+            return Http::response(['token_type' => 'Bearer', 'expires_in' => 900, 'access_token' => $this->identityApiToken($clientId, $scopes, $clientId)]);
+        }
+
+        if (($data['grant_type'] ?? null) === 'urn:ietf:params:oauth:grant-type:token-exchange' && ($data['audience'] ?? null) === 'identity-api') {
+            $this->exchangeCalls++;
+            $subject = $this->decode((string) ($data['subject_token'] ?? ''));
+            $person = $subject['sub'] ?? null;
+
+            if (! is_string($person) || ! isset($this->users[$person]) || isset($this->revoked[$person])
+                || ($subject['aud'] ?? null) !== $this->audience || ($subject['exp'] ?? 0) <= Carbon::now()->getTimestamp()
+                || ($subject['client_id'] ?? null) !== ($data['client_id'] ?? null)) {
+                return Http::response(['error' => 'invalid_grant'], 400);
+            }
+
+            return Http::response(['token_type' => 'Bearer', 'expires_in' => 900, 'access_token' => $this->identityApiToken($person, ['vehicles:read', 'vehicles:write', 'organizations:read'], (string) $subject['client_id'])]);
+        }
+
+        return Http::response(['error' => 'unsupported_grant_type'], 400);
+    }
+
+    /**
+     * @param  list<string>  $scopes
+     */
+    private function identityApiToken(string $subject, array $scopes, string $clientId): string
+    {
+        return $this->tokenFor($subject, $scopes, ['aud' => 'identity-api', 'client_id' => $clientId]);
+    }
+
+    /**
+     * L'API `identity-api` v1 (AR-054), avec les mêmes formes et les mêmes refus que le vrai service.
+     *
+     * @return PromiseInterface
+     */
+    private function api(Request $request)
+    {
+        $token = $this->decode(Str::after($request->header('Authorization')[0] ?? '', 'Bearer '));
+
+        if (($token['aud'] ?? null) !== 'identity-api' || ($token['exp'] ?? 0) <= Carbon::now()->getTimestamp()
+            || (isset($token['sub']) && isset($this->revoked[$token['sub']]))) {
+            return Http::response(['error' => 'invalid_token'], 401);
+        }
+
+        $scopes = explode(' ', (string) ($token['scope'] ?? ''));
+        $isService = ($token['sub'] ?? null) === ($token['client_id'] ?? '');
+        $path = (string) parse_url($request->url(), PHP_URL_PATH);
+        $person = (string) ($token['sub'] ?? '');
+
+        if ($path === '/api/v1/organizations' || str_starts_with($path, '/api/v1/organizations/')) {
+            if ($isService || ! in_array('organizations:read', $scopes, true)) {
+                return Http::response(['error' => $isService ? 'forbidden' : 'insufficient_scope'], 403);
+            }
+
+            $id = str_starts_with($path, '/api/v1/organizations/') ? substr($path, strlen('/api/v1/organizations/')) : null;
+
+            return $id === null ? $this->organizationList($person) : $this->organizationDetail($person, rawurldecode($id));
+        }
+
+        if (preg_match('#^/api/v1/accounts/([^/]+)/status$#', $path, $matches) === 1) {
+            if (! $isService || ! in_array('accounts:status', $scopes, true)) {
+                return Http::response(['error' => $isService ? 'insufficient_scope' : 'forbidden'], 403);
+            }
+
+            $id = rawurldecode($matches[1]);
+
+            return Http::response(['id' => $id, 'exists' => isset($this->users[$id]), 'suspended' => isset($this->revoked[$id])]);
+        }
+
+        return Http::response(['error' => 'not_found'], 404);
+    }
+
+    /**
+     * @return PromiseInterface
+     */
+    private function organizationList(string $person)
+    {
+        $mine = array_filter($this->organizations, fn (array $organization) => isset($organization['members'][$person]));
+        uasort($mine, fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+
+        return Http::response(['data' => array_map(
+            fn (string $id, array $organization) => $this->summary($id, $organization, $person),
+            array_keys($mine),
+            $mine,
+        )]);
+    }
+
+    /**
+     * @return PromiseInterface
+     */
+    private function organizationDetail(string $person, string $id)
+    {
+        $organization = $this->organizations[$id] ?? null;
+
+        if ($organization === null || ! isset($organization['members'][$person])) {
+            return Http::response(['message' => 'Not Found'], 404);
+        }
+
+        return Http::response(['data' => $this->summary($id, $organization, $person) + [
+            'created_at' => $organization['created_at'],
+            'members' => array_map(
+                fn (string $userId, string $role) => ['user_id' => $userId, 'name' => $this->users[$userId]['name'] ?? null, 'role' => $role],
+                array_keys($organization['members']),
+                $organization['members'],
+            ),
+        ]]);
+    }
+
+    /**
+     * @param  array{name: string, slug: string, created_at: string, members: array<string, string>}  $organization
+     * @return array{id: string, name: string, slug: string, role: string}
+     */
+    private function summary(string $id, array $organization, string $person): array
+    {
+        return ['id' => $id, 'name' => $organization['name'], 'slug' => $organization['slug'], 'role' => $organization['members'][$person]];
     }
 
     /**

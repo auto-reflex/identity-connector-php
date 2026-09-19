@@ -8,6 +8,7 @@ use AutoReflex\IdentityConnector\Http\Middleware\ResolveProfile;
 use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
 use AutoReflex\IdentityConnector\Jwt\KeySetProvider;
 use AutoReflex\IdentityConnector\Jwt\RemoteKeySet;
+use Illuminate\Contracts\Encryption\StringEncrypter;
 use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -46,9 +47,14 @@ class IdentityServiceProvider extends ServiceProvider
 
         $this->app->singleton(IdentityClient::class, fn ($app) => new IdentityClient(
             $app->make(Http::class),
+            $app['cache']->store($app['config']->get('identity-connector.cache.store')),
+            $app->make(StringEncrypter::class),
             $this->baseUrl(),
             (int) $app['config']->get('identity-connector.http.timeout'),
             (int) $app['config']->get('identity-connector.http.connect_timeout'),
+            $app['config']->get('identity-connector.service.client_id') ?: null,
+            $app['config']->get('identity-connector.service.client_secret') ?: null,
+            array_filter((array) $app['config']->get('identity-connector.exchange.client_secrets'), 'is_string'),
         ));
 
         $this->app->scoped(IdentityManager::class, fn ($app) => new IdentityManager($app->make(Request::class), $app->make(IdentityClient::class)));

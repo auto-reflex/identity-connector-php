@@ -3,6 +3,9 @@
 namespace AutoReflex\IdentityConnector;
 
 use AutoReflex\IdentityConnector\Client\IdentityClient;
+use AutoReflex\IdentityConnector\Client\IdentityRejected;
+use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
+use AutoReflex\IdentityConnector\Client\Organization;
 use AutoReflex\IdentityConnector\Http\Middleware\AuthenticateIdentity;
 use AutoReflex\IdentityConnector\Jwt\VerifiedToken;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -33,6 +36,28 @@ class IdentityManager
         $user = $this->request->user();
 
         return $user instanceof Authenticatable ? $user : null;
+    }
+
+    /**
+     * Organisations de la personne de la requête en cours, lues dans Identity avec son token.
+     *
+     * @return list<Organization>
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function organizations(): array
+    {
+        return $this->client->organizations((string) $this->request->bearerToken());
+    }
+
+    /**
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function organization(string $id): ?Organization
+    {
+        return $this->client->organization((string) $this->request->bearerToken(), $id);
     }
 
     public function client(): IdentityClient

@@ -16,6 +16,11 @@ abstract class TestCase extends Orchestra
         return [IdentityServiceProvider::class, WorkbenchServiceProvider::class];
     }
 
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+    }
+
     protected function defineDatabaseMigrations(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../workbench/database/migrations');

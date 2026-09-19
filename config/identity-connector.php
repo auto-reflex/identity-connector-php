@@ -40,6 +40,25 @@ return [
     ],
 
     /*
+    | Accès de service à service (AR-035, `client_credentials`) : le client de service de cette API, tel
+    | qu'enregistré dans Identity (`autotrackly-api-service`…). Sert à `Identity::accountStatus()`.
+    */
+    'service' => [
+        'client_id' => env('IDENTITY_SERVICE_CLIENT_ID'),
+        'client_secret' => env('IDENTITY_SERVICE_CLIENT_SECRET'),
+    ],
+
+    /*
+    | Échange de token pour `identity-api` : un client public (application mobile) n'a pas de secret ; le
+    | back-end d'un client confidentiel (ex. `autoreflex-map-web`) indique ici son secret, par `client_id`.
+    */
+    'exchange' => [
+        'client_secrets' => [
+            // 'autoreflex-map-web' => env('IDENTITY_MAP_WEB_SECRET'),
+        ],
+    ],
+
+    /*
     | Appels HTTP vers Identity : timeouts courts, pour dégrader plutôt qu'attendre (AR-033).
     */
     'http' => [

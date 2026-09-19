@@ -14,6 +14,11 @@ Route::prefix('api')->group(function (): void {
     // Ressource protégée par un scope que le token de test n'a pas par défaut.
     Route::middleware('identity.auth:vehicles:read')->get('/needs-scope', fn () => ['ok' => true]);
 
+    Route::middleware(['identity.auth:profile', 'identity.profile'])->group(function (): void {
+        Route::get('/organizations', fn () => ['data' => Identity::organizations()]);
+        Route::get('/organizations/{id}', fn (string $id) => ['data' => Identity::organization($id) ?? abort(404)]);
+    });
+
     // Sans profil : authentification seule.
     Route::middleware('identity.auth')->get('/whoami', fn (Request $request) => ['sub' => Identity::token()->subject]);
 });
