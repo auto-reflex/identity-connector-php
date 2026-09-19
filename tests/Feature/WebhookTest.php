@@ -155,7 +155,7 @@ it('forgets an event whose processing failed, so that Identity can redeliver it'
 describe('forward compatibility', function () {
     it('acknowledges and ignores an event type it does not know', function () {
         Event::fake([AccountSuspended::class, AccountReinstated::class]);
-        ['body' => $body, 'server' => $server] = $this->identity->webhook('account.deletion_requested', WH_USER);
+        ['body' => $body, 'server' => $server] = $this->identity->webhook('account.something_new', WH_USER);
 
         postWebhook($this, $body, $server)->assertStatus(202);
 

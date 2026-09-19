@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('locale', 8)->nullable();
             $table->timestamp('product_suspended_at')->nullable();
             $table->timestamp('identity_suspended_at')->nullable();
+            $table->timestamp('identity_deletion_at')->nullable();
             $table->timestamps();
         });
     }

@@ -2,12 +2,16 @@
 
 namespace Workbench\App\Providers;
 
+use AutoReflex\IdentityConnector\Events\AccountDeletionCancelled;
+use AutoReflex\IdentityConnector\Events\AccountDeletionDue;
+use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
 use AutoReflex\IdentityConnector\Events\AccountReinstated;
 use AutoReflex\IdentityConnector\Events\AccountSuspended;
 use AutoReflex\IdentityConnector\Profiles\ProfileStore;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\EloquentProfileStore;
+use Workbench\App\Listeners\ApplyIdentityDeletion;
 use Workbench\App\Listeners\ApplyIdentitySuspension;
 
 /**
@@ -31,5 +35,6 @@ class WorkbenchServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../../routes/api.php');
 
         Event::listen([AccountSuspended::class, AccountReinstated::class], ApplyIdentitySuspension::class);
+        Event::listen([AccountDeletionRequested::class, AccountDeletionCancelled::class, AccountDeletionDue::class], ApplyIdentityDeletion::class);
     }
 }

@@ -2,8 +2,12 @@
 
 namespace AutoReflex\IdentityConnector\Http\Controllers;
 
+use AutoReflex\IdentityConnector\Events\AccountDeletionCancelled;
+use AutoReflex\IdentityConnector\Events\AccountDeletionDue;
+use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
 use AutoReflex\IdentityConnector\Events\AccountReinstated;
 use AutoReflex\IdentityConnector\Events\AccountSuspended;
+use AutoReflex\IdentityConnector\Events\OrganizationDeleted;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +22,11 @@ use Throwable;
 class IdentityWebhookController
 {
     private const SUPPORTED_VERSION = 1;
+
+    private const TYPES = [
+        'account.suspended', 'account.reinstated', 'account.deletion_requested',
+        'account.deletion_cancelled', 'account.deletion_due', 'organization.deleted',
+    ];
 
     public function __construct(private readonly Cache $cache) {}
 
@@ -35,7 +44,7 @@ class IdentityWebhookController
         }
 
         // Un type ou une version que ce produit ne connaît pas n'est pas une erreur : Identity peut évoluer.
-        if (! in_array($envelope['type'], ['account.suspended', 'account.reinstated'], true)) {
+        if (! in_array($envelope['type'], self::TYPES, true)) {
             return response()->json(['status' => 'ignored'], 202);
         }
 
@@ -45,9 +54,16 @@ class IdentityWebhookController
             return response()->json(['status' => 'ignored'], 202);
         }
 
-        $userId = $envelope['data']['user_id'] ?? null;
+        // Un événement d'organisation porte `organization_id`, les autres `user_id`.
+        $subject = $envelope['data'][$envelope['type'] === 'organization.deleted' ? 'organization_id' : 'user_id'] ?? null;
 
-        if (! is_string($userId) || $userId === '' || strlen($userId) > 64) {
+        if (! is_string($subject) || $subject === '' || strlen($subject) > 64) {
+            return response()->json(['error' => 'invalid_event'], 400);
+        }
+
+        $scheduledFor = $envelope['data']['scheduled_for'] ?? null;
+
+        if ($envelope['type'] === 'account.deletion_requested' && ! is_string($scheduledFor)) {
             return response()->json(['error' => 'invalid_event'], 400);
         }
 
@@ -59,9 +75,14 @@ class IdentityWebhookController
 
         try {
             $occurredAt = CarbonImmutable::parse($envelope['occurred_at']);
-            $event = $envelope['type'] === 'account.suspended'
-                ? new AccountSuspended($userId, $envelope['id'], $occurredAt)
-                : new AccountReinstated($userId, $envelope['id'], $occurredAt);
+            $event = match ($envelope['type']) {
+                'account.suspended' => new AccountSuspended($subject, $envelope['id'], $occurredAt),
+                'account.reinstated' => new AccountReinstated($subject, $envelope['id'], $occurredAt),
+                'account.deletion_requested' => new AccountDeletionRequested($subject, $envelope['id'], $occurredAt, CarbonImmutable::parse((string) $scheduledFor)),
+                'account.deletion_cancelled' => new AccountDeletionCancelled($subject, $envelope['id'], $occurredAt),
+                'account.deletion_due' => new AccountDeletionDue($subject, $envelope['id'], $occurredAt),
+                'organization.deleted' => new OrganizationDeleted($subject, $envelope['id'], $occurredAt),
+            };
 
             event($event);
         } catch (Throwable $exception) {

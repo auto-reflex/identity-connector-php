@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $locale
  * @property Carbon|null $product_suspended_at
  * @property Carbon|null $identity_suspended_at
+ * @property Carbon|null $identity_deletion_at
  */
 class Profile extends Authenticatable implements SuspendableProfile
 {
@@ -24,12 +25,12 @@ class Profile extends Authenticatable implements SuspendableProfile
 
     protected function casts(): array
     {
-        return ['product_suspended_at' => 'datetime', 'identity_suspended_at' => 'datetime'];
+        return ['product_suspended_at' => 'datetime', 'identity_suspended_at' => 'datetime', 'identity_deletion_at' => 'datetime'];
     }
 
     public function isSuspended(): bool
     {
-        // Suspension locale du produit ou suspension globale relayée par Identity : les deux coupent l'accès.
-        return $this->product_suspended_at !== null || $this->identity_suspended_at !== null;
+        // Suspension locale du produit, suspension globale ou suppression de compte relayées par Identity : toutes coupent l'accès.
+        return $this->product_suspended_at !== null || $this->identity_suspended_at !== null || $this->identity_deletion_at !== null;
     }
 }

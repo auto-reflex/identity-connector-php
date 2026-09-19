@@ -86,7 +86,7 @@ use AutoReflex\IdentityConnector\Client\{IdentityUnavailable, IdentityRejected};
 try {
     $organizations = Identity::organizations();          // de la personne de la requête, avec son rôle
     $organization  = Identity::organization($id);        // détail et membres (sans email) ; null si inconnue ou étrangère
-    $status = Identity::client()->accountStatus($userId); // service à service : exists, suspended, isActive()
+    $status = Identity::client()->accountStatus($userId); // service à service : exists, suspended, deletion, isActive()
 } catch (IdentityUnavailable) {
     // panne, timeout, 5xx : dégrader l'affichage (AR-033), réessayer plus tard
 } catch (IdentityRejected $e) {
@@ -109,9 +109,31 @@ Event::listen(AutoReflex\IdentityConnector\Events\AccountSuspended::class, funct
 });
 ```
 
-`AccountSuspended` et `AccountReinstated` existent aujourd'hui ; un type ou une version inconnus reçoivent 202 et sont
-ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
+Événements relayés : `AccountSuspended`, `AccountReinstated`, `AccountDeletionRequested`, `AccountDeletionCancelled`,
+`AccountDeletionDue` et `OrganizationDeleted` ; un type ou une version inconnus reçoivent 202 et sont ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
 Une suspension locale du produit ne doit pas être levée par `AccountReinstated` (voir `workbench/app/Listeners`).
+
+## Suppression de compte (AR-055, AR-056)
+
+Quand une personne supprime son compte AutoReflex, le produit reçoit trois événements, dans cet ordre :
+
+1. `AccountDeletionRequested` (`scheduledFor`) : **verrouiller** le profil, sans rien effacer ; la personne a 30 jours
+   pour changer d'avis.
+2. `AccountDeletionCancelled` : elle s'est reconnectée, **déverrouiller**. (Retour possible à l'étape 1.)
+3. `AccountDeletionDue` : **effacer maintenant** les données locales de ce compte (ou les anonymiser, selon les
+   obligations du produit), puis **accuser** : `Identity::client()->acknowledgeDeletion($userId)`. Identity clôture
+   quand tous les produits ont accusé, ou 14 jours après si l'un se tait.
+
+```php
+Event::listen(AccountDeletionDue::class, function ($event) {
+    Profile::where('identity_user_id', $event->userId)->delete();            // effacement idempotent
+    Identity::client()->acknowledgeDeletion($event->userId);                 // false s'il n'y a rien à accuser
+});
+```
+
+Laissez remonter les exceptions (dont `IdentityUnavailable` à l'accusé) : le webhook répond alors 500 et Identity
+renvoie l'événement, ce qui rejoue l'effacement sans effet. `OrganizationDeleted` demande de fermer l'extension locale qui
+référençait cette organisation. Un compte dont `accountStatus()->deletion` n'est pas `null` n'est plus `isActive()`.
 
 ## Tester une API produit sans Identity
 
@@ -128,8 +150,8 @@ it('renvoie mon profil', function () {
 ```
 
 `FakeIdentity` simule le JWKS, `/userinfo`, l'échange de token, le token de service, l'API organisations et le statut
-de compte, et permet de simuler une panne (`goDown()`), une révocation, une rotation de clé et un webhook signé
-(`webhook()`), avec les mêmes formes et les mêmes refus que le vrai service.
+de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), et permet de simuler une panne (`goDown()`),
+une révocation, une rotation de clé et un webhook signé (`webhook()`), avec les mêmes formes et les mêmes refus que le vrai service.
 
 ## Développement
 

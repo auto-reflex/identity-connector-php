@@ -35,6 +35,12 @@ final class FakeIdentity
     /** @var array<string, string> secrets des clients de service, par `client_id` */
     private array $serviceClients = [];
 
+    /** @var array<string, array{status: string, scheduled_for: string}> suppressions de compte en cours */
+    private array $deletions = [];
+
+    /** @var list<string> comptes dont le produit a accusé l'effacement */
+    private array $acknowledged = [];
+
     private int $exchangeCalls = 0;
 
     private int $serviceTokenCalls = 0;
@@ -110,6 +116,27 @@ final class FakeIdentity
         ];
 
         return $this;
+    }
+
+    /**
+     * Déclare une suppression de compte en cours côté Identity : `pending` (profil à verrouiller) ou
+     * `processing` (effacement demandé : le produit efface puis accuse).
+     */
+    public function deletion(string $userId, string $status = 'pending', ?string $scheduledFor = null): self
+    {
+        $this->deletions[$userId] = ['status' => $status, 'scheduled_for' => $scheduledFor ?? Carbon::now()->addDays(30)->toIso8601String()];
+
+        return $this;
+    }
+
+    /**
+     * Comptes dont le produit a accusé l'effacement auprès du faux Identity.
+     *
+     * @return list<string>
+     */
+    public function acknowledgedDeletions(): array
+    {
+        return $this->acknowledged;
     }
 
     /**
@@ -217,16 +244,26 @@ final class FakeIdentity
      *     ['body' => $body, 'server' => $server] = $identity->webhook('account.suspended', $userId);
      *     $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertNoContent();
      *
+     * `$subjectId` est l'identifiant du compte, ou de l'organisation pour `organization.deleted`. `account.deletion_requested`
+     * porte en plus `scheduled_for` ; `$data` remplace le contenu si besoin.
+     *
+     * @param  array<string, string>|null  $data
      * @return array{body: string, server: array<string, string>}
      */
-    public function webhook(string $type, string $userId, ?string $eventId = null, ?int $timestamp = null): array
+    public function webhook(string $type, string $subjectId, ?string $eventId = null, ?int $timestamp = null, ?array $data = null): array
     {
+        $data ??= match ($type) {
+            'organization.deleted' => ['organization_id' => $subjectId],
+            'account.deletion_requested' => ['user_id' => $subjectId, 'scheduled_for' => Carbon::now('UTC')->addDays(30)->toIso8601String()],
+            default => ['user_id' => $subjectId],
+        };
+
         $body = json_encode([
             'id' => $eventId ?? (string) Str::ulid(),
             'type' => $type,
             'version' => 1,
             'occurred_at' => Carbon::now('UTC')->toIso8601String(),
-            'data' => ['user_id' => $userId],
+            'data' => $data,
         ], JSON_THROW_ON_ERROR);
 
         return [
@@ -281,7 +318,7 @@ final class FakeIdentity
 
             $scopes = array_values(array_filter(explode(' ', (string) ($data['scope'] ?? ''))));
 
-            if ($scopes === [] || array_diff($scopes, ['vehicles:read', 'accounts:status']) !== []) {
+            if ($scopes === [] || array_diff($scopes, ['vehicles:read', 'accounts:status', 'accounts:deletion']) !== []) {
                 return Http::response(['error' => 'invalid_scope'], 400);
             }
 
@@ -342,6 +379,22 @@ final class FakeIdentity
             return $id === null ? $this->organizationList($person) : $this->organizationDetail($person, rawurldecode($id));
         }
 
+        if (preg_match('#^/api/v1/accounts/([^/]+)/deletion/ack$#', $path, $matches) === 1) {
+            if (! $isService || ! in_array('accounts:deletion', $scopes, true)) {
+                return Http::response(['error' => $isService ? 'insufficient_scope' : 'forbidden'], 403);
+            }
+
+            $id = rawurldecode($matches[1]);
+
+            if (($this->deletions[$id]['status'] ?? null) !== 'processing') {
+                return Http::response(['error' => 'not_found'], 404);
+            }
+
+            $this->acknowledged[] = $id;
+
+            return Http::response(['status' => 'acknowledged']);
+        }
+
         if (preg_match('#^/api/v1/accounts/([^/]+)/status$#', $path, $matches) === 1) {
             if (! $isService || ! in_array('accounts:status', $scopes, true)) {
                 return Http::response(['error' => $isService ? 'insufficient_scope' : 'forbidden'], 403);
@@ -349,7 +402,13 @@ final class FakeIdentity
 
             $id = rawurldecode($matches[1]);
 
-            return Http::response(['id' => $id, 'exists' => isset($this->users[$id]), 'suspended' => isset($this->revoked[$id])]);
+            return Http::response([
+                'id' => $id,
+                'exists' => isset($this->users[$id]),
+                'suspended' => isset($this->revoked[$id]),
+                'deletion' => $this->deletions[$id]['status'] ?? null,
+                'deletion_scheduled_for' => $this->deletions[$id]['scheduled_for'] ?? null,
+            ]);
         }
 
         return Http::response(['error' => 'not_found'], 404);

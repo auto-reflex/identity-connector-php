@@ -3,6 +3,7 @@
 namespace AutoReflex\IdentityConnector\Client;
 
 use AutoReflex\IdentityConnector\Profiles\IdentityUser;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Encryption\StringEncrypter;
@@ -111,7 +112,35 @@ class IdentityClient
             throw new IdentityUnavailable('Identity returned an unusable account status.');
         }
 
-        return new AccountStatus((string) $data['id'], (bool) $data['exists'], (bool) $data['suspended']);
+        return new AccountStatus(
+            (string) $data['id'],
+            (bool) $data['exists'],
+            (bool) $data['suspended'],
+            isset($data['deletion']) ? (string) $data['deletion'] : null,
+            isset($data['deletion_scheduled_for']) ? CarbonImmutable::parse((string) $data['deletion_scheduled_for']) : null,
+        );
+    }
+
+    /**
+     * Accuse à Identity l'effacement des données locales d'un compte, après `AccountDeletionDue` (AR-056).
+     * Idempotent : sans risque à rejouer. `false` s'il n'y a pas d'effacement en cours pour ce produit et ce compte.
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function acknowledgeDeletion(string $userId): bool
+    {
+        try {
+            $this->asService('accounts:deletion', '/api/v1/accounts/'.rawurlencode($userId).'/deletion/ack', 'post');
+        } catch (IdentityRejected $rejected) {
+            if ($rejected->status === 404) {
+                return false;
+            }
+
+            throw $rejected;
+        }
+
+        return true;
     }
 
     /**
@@ -193,17 +222,22 @@ class IdentityClient
      * @throws IdentityUnavailable
      * @throws IdentityRejected
      */
-    private function asService(string $scope, string $path): Response
+    private function asService(string $scope, string $path, string $method = 'get'): Response
     {
+        $call = fn (string $token): Response => $method === 'post'
+            // Idempotent côté Identity : une reprise sur panne réseau est sans risque.
+            ? $this->send(fn (PendingRequest $request) => $request->withToken($token)->post($this->url($path)), retry: true)
+            : $this->get($token, $path);
+
         try {
-            return $this->get($this->serviceToken($scope), $path);
+            return $call($this->serviceToken($scope));
         } catch (IdentityRejected $rejected) {
             if ($rejected->status !== 401) {
                 throw $rejected;
             }
         }
 
-        return $this->get($this->serviceToken($scope, fresh: true), $path);
+        return $call($this->serviceToken($scope, fresh: true));
     }
 
     private function cachedToken(string $key): ?string
