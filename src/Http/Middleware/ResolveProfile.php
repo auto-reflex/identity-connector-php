@@ -11,6 +11,7 @@ use AutoReflex\IdentityConnector\Profiles\SuspendableProfile;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use LogicException;
@@ -19,8 +20,10 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Charge le profil local de la personne du token, et le crée à la première connexion en lisant `/userinfo`
  * avec le token reçu (AR-048, AR-052). À placer après `identity.auth`. Le profil devient l'utilisateur de la requête et du garde par défaut.
+ *
+ * `AuthenticatesRequests`, comme `identity.auth` : il s'exécute avant `throttle`, dont les limiteurs nommés lisent `$request->user()`.
  */
-class ResolveProfile
+class ResolveProfile implements AuthenticatesRequests
 {
     public function __construct(
         private readonly ProfileStore $profiles,

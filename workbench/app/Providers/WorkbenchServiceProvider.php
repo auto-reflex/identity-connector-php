@@ -12,9 +12,12 @@ use AutoReflex\IdentityConnector\Events\AccountSuspended;
 use AutoReflex\IdentityConnector\Events\VehicleDeleted;
 use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
 use AutoReflex\IdentityConnector\Profiles\ProfileStore;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\EloquentProfileStore;
 use Workbench\App\Listeners\ApplyIdentityDeletion;
@@ -47,6 +50,13 @@ class WorkbenchServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
         $this->loadRoutesFrom(__DIR__.'/../../routes/api.php');
+
+        RateLimiter::for('by-person', function (Request $request) {
+            $user = $request->user();
+            config(['by-person.key' => $key = $user instanceof Profile ? $user->identity_user_id : 'anonymous']);
+
+            return Limit::perMinute(60)->by($key);
+        });
 
         Gate::define('own-profile', fn (Profile $profile, string $identityUserId) => $profile->identity_user_id === $identityUserId);
 

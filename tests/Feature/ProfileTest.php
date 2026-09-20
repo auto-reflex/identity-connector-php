@@ -45,6 +45,12 @@ it('makes the profile the user of the default guard, so that the Gate and the po
         ->assertJson(['gate_allows' => false]);
 });
 
+it('authenticates before throttle, so that a named limiter keyed on the user sees the person at the first request', function () {
+    $this->getJson('/api/throttled', authorization($this->identity->tokenFor(PERSON)))->assertOk();
+
+    expect(config('by-person.key'))->toBe(PERSON);
+});
+
 it('keeps working for a known person while Identity is down (degraded mode)', function () {
     $this->getJson('/api/me', authorization($this->identity->tokenFor(PERSON)))->assertOk();
     $token = $this->identity->tokenFor(PERSON);

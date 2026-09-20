@@ -21,6 +21,9 @@ Route::prefix('api')->group(function (): void {
         'gate_allows' => Gate::allows('own-profile', $id),
     ]);
 
+    // Un limiteur nommé qui lit `$request->user()` : il doit voir la personne dès la première requête.
+    Route::middleware(['throttle:by-person', 'identity.auth:profile', 'identity.profile'])->get('/throttled', fn () => ['ok' => true]);
+
     // Ressource protégée par un scope que le token de test n'a pas par défaut.
     Route::middleware('identity.auth:vehicles:read')->get('/needs-scope', fn () => ['ok' => true]);
 

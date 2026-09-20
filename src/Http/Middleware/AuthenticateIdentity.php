@@ -6,6 +6,7 @@ use AutoReflex\IdentityConnector\Jwt\InvalidAccessToken;
 use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
 use AutoReflex\IdentityConnector\Jwt\KeySetUnavailable;
 use Closure;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use UnexpectedValueException;
@@ -16,8 +17,11 @@ use UnexpectedValueException;
  *
  * Le token vérifié est disponible par `Identity::token()`. Aucun appel à Identity : la durée de vie
  * courte des tokens fait foi (AR-033).
+ *
+ * `AuthenticatesRequests` : Laravel classe alors ce middleware avec l'authentification, avant `throttle` et les
+ * liaisons de routes, qui lisent l'utilisateur de la requête.
  */
-class AuthenticateIdentity
+class AuthenticateIdentity implements AuthenticatesRequests
 {
     public const ATTRIBUTE = 'identity.token';
 
