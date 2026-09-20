@@ -1,7 +1,7 @@
 # AutoReflex Identity Connector
 
 Package Laravel commun des APIs AutoReflex (AutoDonuts, AutoTrackly, AutoReflexPro, Map) pour s'appuyer sur le
-service [Identity](../identity). Contrat : `AR-032` et `AR-052` à `AR-056` dans
+service [Identity](../identity). Contrat : `AR-032` et `AR-052` à `AR-059` dans
 `docs/ecosystem/DECISIONS.md`.
 
 Ce qu'il fait :
@@ -9,7 +9,7 @@ Ce qu'il fait :
 - **authentifie** une requête par access token JWT d'Identity : signature RS256 (clés lues dans le JWKS, en cache),
   émetteur, audience de l'API, expiration, scopes — sans appeler Identity ;
 - **crée le profil local** à la première requête d'une personne (lecture de `/userinfo`) ;
-- **appelle l'API Identity** : organisations de la personne, statut d'un compte en service à service ;
+- **appelle l'API Identity** : organisations de la personne, véhicules (garage, lecture par lot, création, liens), statut d'un compte en service à service ;
 - **reçoit les webhooks** signés d'Identity (suspension, réactivation et suppression de compte) et **accuse l'effacement** ;
 - fournit un **Identity simulé** pour tester une API produit sans service Identity.
 
@@ -113,6 +113,30 @@ Event::listen(AutoReflex\IdentityConnector\Events\AccountSuspended::class, funct
 `AccountDeletionDue` et `OrganizationDeleted` ; un type ou une version inconnus reçoivent 202 et sont ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
 Une suspension locale du produit ne doit pas être levée par `AccountReinstated` (voir `workbench/app/Listeners`).
 
+## Véhicules (AR-057 à AR-059)
+
+Un véhicule est une fiche unique dans Identity ; le produit garde un **lien** et ses propres données, rattachées à `vehicle_id`.
+
+```php
+$garage  = Identity::vehicles()->garage(['identity', 'usage']);          // la personne connectée : garage et flottes
+$vehicle = Identity::vehicles()->get($id, ['identity', 'specs']);       // null si absent ou illisible (404 indiscernables)
+$created = Identity::vehicles()->create(['identity' => ['make' => 'Peugeot', 'model' => '205'], 'link' => ['groups' => ['identity', 'usage']]]);
+$updated = Identity::vehicles()->update($id, ['usage' => ['mileage_km' => 183000]], $vehicle->version);   // IdentityRejected 412 si périmé
+Identity::vehicles()->link($id, ['identity', 'specs'], 'public');       // consentement : les groupes que ce produit lira
+Identity::vehicleClient()->publicMany($ids, reader: 'anonymous');      // tiers, en service à service, avec le lecteur déclaré
+```
+
+- **Groupes** : un `Vehicle` ne porte que les groupes accordés (`identity`, `specs`, `media`, `usage`, `sensitive`) : `$vehicle->has('usage')`.
+  Une donnée absente n'est pas « vide », elle n'est pas accordée. `sensitive` (VIN, plaque) n'est renvoyé qu'à la personne propriétaire qui le demande
+  (`fields`) avec le scope `vehicles:sensitive`, jamais à un tiers, et n'est **jamais mis en cache**.
+- **Erreurs** : `IdentityRejected::$body` porte `current_version` (412, la fiche a changé : relire), `existing_vehicle_id` (409, doublon de VIN
+  dans le garage), `errors` (422). Un kilométrage inférieur exige `confirmDecrease: true`.
+- **Panne d'Identity** : les champs non sensibles sont gardés 60 s (`IDENTITY_VEHICLES_CACHE_SECONDS`) ; si Identity ne répond plus, une copie
+  périmée (jusqu'à 1 h) est servie avec `$vehicle->stale === true`, sinon `IdentityUnavailable` : affichez un état dégradé. Une écriture invalide
+  le cache de la personne.
+- **Événements** : `VehicleDeleted` (véhicule supprimé) et `VehicleUnlinked` (lien retiré par le propriétaire ou le portail) : fermez ou anonymisez vos
+  données locales rattachées à `vehicle_id` (voir `workbench/app/Listeners/CloseLocalVehicleData.php`).
+
 ## Suppression de compte (AR-055, AR-056)
 
 Quand une personne supprime son compte AutoReflex, le produit reçoit trois événements, dans cet ordre :
@@ -150,7 +174,8 @@ it('renvoie mon profil', function () {
 ```
 
 `FakeIdentity` simule le JWKS, `/userinfo`, l'échange de token, le token de service, l'API organisations et le statut
-de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), et permet de simuler une panne (`goDown()`),
+de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), les véhicules (`vehicles()->add(...)`, mêmes groupes, visibilité et contrôle
+de version que le vrai service, **sans validation des champs**), et permet de simuler une panne (`goDown()`),
 une révocation, une rotation de clé et un webhook signé (`webhook()`), avec les mêmes formes et les mêmes refus que le vrai service.
 
 ## Développement

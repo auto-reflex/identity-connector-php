@@ -3,6 +3,7 @@
 namespace AutoReflex\IdentityConnector;
 
 use AutoReflex\IdentityConnector\Client\IdentityClient;
+use AutoReflex\IdentityConnector\Client\VehicleClient;
 use AutoReflex\IdentityConnector\Http\Controllers\IdentityWebhookController;
 use AutoReflex\IdentityConnector\Http\Middleware\AuthenticateIdentity;
 use AutoReflex\IdentityConnector\Http\Middleware\ResolveProfile;
@@ -66,7 +67,14 @@ class IdentityServiceProvider extends ServiceProvider
         $this->app->when(IdentityWebhookController::class)->needs(Cache::class)
             ->give(fn ($app) => $app['cache']->store($app['config']->get('identity-connector.cache.store')));
 
-        $this->app->scoped(IdentityManager::class, fn ($app) => new IdentityManager($app->make(Request::class), $app->make(IdentityClient::class)));
+        $this->app->singleton(VehicleClient::class, fn ($app) => new VehicleClient(
+            $app->make(IdentityClient::class),
+            $app['cache']->store($app['config']->get('identity-connector.cache.store')),
+            (int) $app['config']->get('identity-connector.vehicles.cache_seconds'),
+            (int) $app['config']->get('identity-connector.vehicles.stale_seconds'),
+        ));
+
+        $this->app->scoped(IdentityManager::class, fn ($app) => new IdentityManager($app, $app->make(IdentityClient::class), $app->make(VehicleClient::class)));
     }
 
     public function boot(): void

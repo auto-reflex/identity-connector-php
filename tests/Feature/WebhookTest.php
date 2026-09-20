@@ -145,7 +145,7 @@ it('forgets an event whose processing failed, so that Identity can redeliver it'
     });
     ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER, '01J0EVENT0000000000000000A');
 
-    postWebhook($this, $body, $server)->assertStatus(500);
+    postWebhook($this, $body, $server)->assertServerError();
 
     $fail = false;
     $second = $this->identity->webhook('account.suspended', WH_USER, '01J0EVENT0000000000000000A');

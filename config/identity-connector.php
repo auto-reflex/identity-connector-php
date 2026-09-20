@@ -73,6 +73,15 @@ return [
     ],
 
     /*
+    | Véhicules (AR-059) : cache court des lectures de champs NON sensibles, et durée pendant laquelle une copie périmée sert si
+    | Identity ne répond plus (`stale_seconds`). Le groupe `sensitive` n'est jamais mis en cache. `cache_seconds` = 0 désactive.
+    */
+    'vehicles' => [
+        'cache_seconds' => (int) env('IDENTITY_VEHICLES_CACHE_SECONDS', 60),
+        'stale_seconds' => (int) env('IDENTITY_VEHICLES_STALE_SECONDS', 3600),
+    ],
+
+    /*
     | Appels HTTP vers Identity : timeouts courts, pour dégrader plutôt qu'attendre (AR-033).
     */
     'http' => [

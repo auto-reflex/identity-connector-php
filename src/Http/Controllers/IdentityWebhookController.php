@@ -8,6 +8,8 @@ use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
 use AutoReflex\IdentityConnector\Events\AccountReinstated;
 use AutoReflex\IdentityConnector\Events\AccountSuspended;
 use AutoReflex\IdentityConnector\Events\OrganizationDeleted;
+use AutoReflex\IdentityConnector\Events\VehicleDeleted;
+use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +27,7 @@ class IdentityWebhookController
 
     private const TYPES = [
         'account.suspended', 'account.reinstated', 'account.deletion_requested',
-        'account.deletion_cancelled', 'account.deletion_due', 'organization.deleted',
+        'account.deletion_cancelled', 'account.deletion_due', 'organization.deleted', 'vehicle.deleted', 'vehicle.unlinked',
     ];
 
     public function __construct(private readonly Cache $cache) {}
@@ -54,8 +56,18 @@ class IdentityWebhookController
             return response()->json(['status' => 'ignored'], 202);
         }
 
-        // Un événement d'organisation porte `organization_id`, les autres `user_id`.
-        $subject = $envelope['data'][$envelope['type'] === 'organization.deleted' ? 'organization_id' : 'user_id'] ?? null;
+        // Un événement d'organisation porte `organization_id`, un événement de véhicule `vehicle_id`, les autres `user_id`.
+        $subject = $envelope['data'][match ($envelope['type']) {
+            'organization.deleted' => 'organization_id',
+            'vehicle.deleted', 'vehicle.unlinked' => 'vehicle_id',
+            default => 'user_id',
+        }] ?? null;
+
+        $product = $envelope['data']['product'] ?? null;
+
+        if ($envelope['type'] === 'vehicle.unlinked' && (! is_string($product) || $product === '' || strlen($product) > 32)) {
+            return response()->json(['error' => 'invalid_event'], 400);
+        }
 
         if (! is_string($subject) || $subject === '' || strlen($subject) > 64) {
             return response()->json(['error' => 'invalid_event'], 400);
@@ -82,6 +94,8 @@ class IdentityWebhookController
                 'account.deletion_cancelled' => new AccountDeletionCancelled($subject, $envelope['id'], $occurredAt),
                 'account.deletion_due' => new AccountDeletionDue($subject, $envelope['id'], $occurredAt),
                 'organization.deleted' => new OrganizationDeleted($subject, $envelope['id'], $occurredAt),
+                'vehicle.deleted' => new VehicleDeleted($subject, $envelope['id'], $occurredAt),
+                'vehicle.unlinked' => new VehicleUnlinked($subject, (string) $product, $envelope['id'], $occurredAt),
             };
 
             event($event);

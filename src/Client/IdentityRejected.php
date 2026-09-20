@@ -10,7 +10,10 @@ use RuntimeException;
  */
 class IdentityRejected extends RuntimeException
 {
-    public function __construct(public readonly int $status, string $message = '', public readonly ?string $error = null)
+    /**
+     * @param  array<string, mixed>  $body  le corps JSON du refus : `current_version` (412), `existing_vehicle_id` (409), `errors` (422)…
+     */
+    public function __construct(public readonly int $status, string $message = '', public readonly ?string $error = null, public readonly array $body = [])
     {
         parent::__construct($message !== '' ? $message : "Identity refused the request (HTTP {$status}).");
     }

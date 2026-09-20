@@ -41,6 +41,8 @@ final class FakeIdentity
     /** @var list<string> comptes dont le produit a accusé l'effacement */
     private array $acknowledged = [];
 
+    private FakeVehicles $vehicleStore;
+
     private int $exchangeCalls = 0;
 
     private int $serviceTokenCalls = 0;
@@ -55,6 +57,15 @@ final class FakeIdentity
     private function __construct(public readonly string $issuer, public readonly string $audience, private SigningKey $key)
     {
         $this->published = [$key];
+        $this->vehicleStore = new FakeVehicles(str_replace('-api', '', $audience));
+    }
+
+    /**
+     * Les véhicules du faux Identity : `$identity->vehicles()->add($id, $ownerUserId, ['identity' => [...]], ['autodonuts' => [...]])`.
+     */
+    public function vehicles(): FakeVehicles
+    {
+        return $this->vehicleStore;
     }
 
     /**
@@ -244,7 +255,7 @@ final class FakeIdentity
      *     ['body' => $body, 'server' => $server] = $identity->webhook('account.suspended', $userId);
      *     $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertNoContent();
      *
-     * `$subjectId` est l'identifiant du compte, ou de l'organisation pour `organization.deleted`. `account.deletion_requested`
+     * `$subjectId` est l'identifiant du compte, de l'organisation pour `organization.deleted`, du véhicule pour `vehicle.*`. `account.deletion_requested`
      * porte en plus `scheduled_for` ; `$data` remplace le contenu si besoin.
      *
      * @param  array<string, string>|null  $data
@@ -254,6 +265,8 @@ final class FakeIdentity
     {
         $data ??= match ($type) {
             'organization.deleted' => ['organization_id' => $subjectId],
+            'vehicle.deleted' => ['vehicle_id' => $subjectId],
+            'vehicle.unlinked' => ['vehicle_id' => $subjectId, 'product' => str_replace('-api', '', $this->audience)],
             'account.deletion_requested' => ['user_id' => $subjectId, 'scheduled_for' => Carbon::now('UTC')->addDays(30)->toIso8601String()],
             default => ['user_id' => $subjectId],
         };
@@ -336,7 +349,7 @@ final class FakeIdentity
                 return Http::response(['error' => 'invalid_grant'], 400);
             }
 
-            return Http::response(['token_type' => 'Bearer', 'expires_in' => 900, 'access_token' => $this->identityApiToken($person, ['vehicles:read', 'vehicles:write', 'organizations:read'], (string) $subject['client_id'])]);
+            return Http::response(['token_type' => 'Bearer', 'expires_in' => 900, 'access_token' => $this->identityApiToken($person, array_filter(['vehicles:read', 'vehicles:write', 'organizations:read', in_array('vehicles:sensitive', explode(' ', (string) ($subject['scope'] ?? '')), true) ? 'vehicles:sensitive' : null]), (string) $subject['client_id'])]);
         }
 
         return Http::response(['error' => 'unsupported_grant_type'], 400);
@@ -368,6 +381,10 @@ final class FakeIdentity
         $isService = ($token['sub'] ?? null) === ($token['client_id'] ?? '');
         $path = (string) parse_url($request->url(), PHP_URL_PATH);
         $person = (string) ($token['sub'] ?? '');
+
+        if ($path === '/api/v1/vehicles' || str_starts_with($path, '/api/v1/vehicles/')) {
+            return $this->vehicleStore->handle($request, $token, $path);
+        }
 
         if ($path === '/api/v1/organizations' || str_starts_with($path, '/api/v1/organizations/')) {
             if ($isService || ! in_array('organizations:read', $scopes, true)) {

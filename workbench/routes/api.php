@@ -1,8 +1,11 @@
 <?php
 
+use AutoReflex\IdentityConnector\Client\IdentityRejected;
+use AutoReflex\IdentityConnector\Client\Vehicle;
 use AutoReflex\IdentityConnector\Facades\Identity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Workbench\App\Models\VehicleNote;
 
 Route::prefix('api')->group(function (): void {
     Route::middleware(['identity.auth:profile', 'identity.profile'])->get('/me', fn (Request $request) => [
@@ -30,6 +33,36 @@ Route::prefix('api')->group(function (): void {
             'deletion' => $status->deletion,
             'deletion_scheduled_for' => $status->deletionScheduledFor?->toIso8601String(),
         ];
+    });
+
+    Route::middleware(['identity.auth:profile', 'identity.profile'])->group(function (): void {
+        $shown = fn (Vehicle $vehicle) => ['id' => $vehicle->id, 'version' => $vehicle->version, 'groups' => $vehicle->groups, 'link' => $vehicle->link, 'role' => $vehicle->role, 'stale' => $vehicle->stale];
+        $fields = fn (Request $request) => $request->query('fields') ? explode(',', (string) $request->query('fields')) : null;
+
+        // Un refus d'Identity (`IdentityRejected`) est rendu tel quel par le fournisseur du workbench, corps compris.
+        Route::get('/garage', fn (Request $request) => ['data' => array_map($shown, Identity::vehicles()->garage($fields($request))->vehicles)]);
+        Route::get('/vehicles/{id}', fn (Request $request, string $id) => ['data' => ($vehicle = Identity::vehicles()->get($id, $fields($request))) === null ? abort(404) : $shown($vehicle)]);
+        Route::post('/vehicles', fn (Request $request) => response()->json(['data' => $shown(Identity::vehicles()->create($request->json()->all()))], 201));
+        Route::patch('/vehicles/{id}', fn (Request $request, string $id) => ['data' => $shown(Identity::vehicles()->update($id, $request->json('data', []), (int) $request->json('version'), (bool) $request->json('confirm_decrease')))]);
+        Route::delete('/vehicles/{id}', function (string $id) {
+            Identity::vehicles()->delete($id);
+
+            return response()->noContent();
+        });
+        Route::put('/vehicles/{id}/link', fn (Request $request, string $id) => ['data' => Identity::vehicles()->link($id, (array) $request->json('groups'), (string) $request->json('visibility', 'private'), (bool) $request->json('share_usage'))]);
+        Route::delete('/vehicles/{id}/link', function (string $id) {
+            Identity::vehicles()->unlink($id);
+
+            return response()->noContent();
+        });
+        Route::post('/vehicles/{id}/notes', fn (Request $request, string $id) => VehicleNote::query()->create(['identity_vehicle_id' => $id, 'note' => (string) $request->json('note')]));
+    });
+
+    // Lecture d'un véhicule de tiers en service à service, comme la page publique d'un événement.
+    Route::middleware('identity.auth')->get('/public/vehicles', function (Request $request) {
+        $reader = (string) $request->query('reader', 'anonymous');
+
+        return ['data' => array_map(fn (Vehicle $vehicle) => ['id' => $vehicle->id, 'groups' => $vehicle->groups, 'stale' => $vehicle->stale], Identity::vehicleClient()->publicMany(explode(',', (string) $request->query('ids')), $reader))];
     });
 
     // Sans profil : authentification seule.

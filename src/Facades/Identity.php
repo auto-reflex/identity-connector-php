@@ -4,6 +4,8 @@ namespace AutoReflex\IdentityConnector\Facades;
 
 use AutoReflex\IdentityConnector\Client\IdentityClient;
 use AutoReflex\IdentityConnector\Client\Organization;
+use AutoReflex\IdentityConnector\Client\PersonVehicles;
+use AutoReflex\IdentityConnector\Client\VehicleClient;
 use AutoReflex\IdentityConnector\IdentityManager;
 use AutoReflex\IdentityConnector\Jwt\VerifiedToken;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -14,6 +16,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static Authenticatable|null profile()
  * @method static list<Organization> organizations()
  * @method static Organization|null organization(string $id)
+ * @method static PersonVehicles vehicles()
+ * @method static VehicleClient vehicleClient()
  * @method static IdentityClient client()
  *
  * @see IdentityManager

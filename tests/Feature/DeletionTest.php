@@ -115,7 +115,7 @@ describe('the product side, end to end (workbench)', function () {
         $webhook = $this->identity->webhook('account.deletion_due', DEL_USER, '01J0EVENT0000000000000000C');
         $this->identity->goDown();
 
-        deliver($this, $webhook)->assertStatus(500);
+        deliver($this, $webhook)->assertServerError();
         expect(Profile::count())->toBe(0)->and($this->identity->acknowledgedDeletions())->toBe([]);
 
         $this->identity->comeBack();

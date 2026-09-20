@@ -199,35 +199,48 @@ class IdentityClient
     }
 
     /**
-     * GET avec le token `identity-api` de la personne. Un 401 (token en cache révoqué entre-temps) provoque un
-     * seul nouvel échange.
+     * Appel de l'API Identity avec le token `identity-api` de la personne. Un 401 (token en cache révoqué entre-temps) provoque un
+     * seul nouvel échange. Reprise sur les seules requêtes idempotentes (GET, PUT, DELETE).
+     *
+     * @param  array<string, mixed>  $options  `query`, `json`
+     * @param  array<string, string>  $headers
      *
      * @throws IdentityUnavailable
      * @throws IdentityRejected
      */
-    private function asPerson(string $productToken, string $path): Response
+    public function personRequest(string $method, string $productToken, string $path, array $options = [], array $headers = [], ?bool $retry = null): Response
     {
+        $call = fn (string $token): Response => $this->send(
+            fn (PendingRequest $request) => $request->withToken($token)->withHeaders($headers)->send(strtoupper($method), $this->url($path), $options),
+            retry: $retry ?? in_array(strtoupper($method), ['GET', 'PUT', 'DELETE'], true),
+        );
+
         try {
-            return $this->get($this->identityToken($productToken), $path);
+            return $call($this->identityToken($productToken));
         } catch (IdentityRejected $rejected) {
             if ($rejected->status !== 401) {
                 throw $rejected;
             }
         }
 
-        return $this->get($this->identityToken($productToken, fresh: true), $path);
+        return $call($this->identityToken($productToken, fresh: true));
     }
 
     /**
+     * Appel de l'API Identity avec le token de service (`client_credentials`) du produit, pour les scopes demandés.
+     *
+     * @param  array<string, mixed>  $options
+     * @param  array<string, string>  $headers
+     *
      * @throws IdentityUnavailable
      * @throws IdentityRejected
      */
-    private function asService(string $scope, string $path, string $method = 'get'): Response
+    public function serviceRequest(string $method, string $scope, string $path, array $options = [], array $headers = [], ?bool $retry = null): Response
     {
-        $call = fn (string $token): Response => $method === 'post'
-            // Idempotent côté Identity : une reprise sur panne réseau est sans risque.
-            ? $this->send(fn (PendingRequest $request) => $request->withToken($token)->post($this->url($path)), retry: true)
-            : $this->get($token, $path);
+        $call = fn (string $token): Response => $this->send(
+            fn (PendingRequest $request) => $request->withToken($token)->withHeaders($headers)->send(strtoupper($method), $this->url($path), $options),
+            retry: $retry ?? in_array(strtoupper($method), ['GET', 'PUT', 'DELETE'], true),
+        );
 
         try {
             return $call($this->serviceToken($scope));
@@ -238,6 +251,17 @@ class IdentityClient
         }
 
         return $call($this->serviceToken($scope, fresh: true));
+    }
+
+    private function asPerson(string $productToken, string $path): Response
+    {
+        return $this->personRequest('GET', $productToken, $path);
+    }
+
+    private function asService(string $scope, string $path, string $method = 'get'): Response
+    {
+        // Les appels de service de ce client sont idempotents (statut, accusé) : une reprise sur panne réseau est sans risque.
+        return $this->serviceRequest($method, $scope, $path, retry: true);
     }
 
     private function cachedToken(string $key): ?string
@@ -280,7 +304,10 @@ class IdentityClient
      * Lit un claim du token produit sans le vérifier : il l'a déjà été par le connecteur, et Identity
      * le revérifie de toute façon à l'échange.
      */
-    private function claimOf(string $jwt, string $claim): string
+    /**
+     * Un claim du token produit, sans le vérifier (il l'est déjà par le connecteur, et Identity le revérifie).
+     */
+    public function claimOf(string $jwt, string $claim): string
     {
         $segments = explode('.', $jwt);
 
@@ -339,7 +366,9 @@ class IdentityClient
 
             // Tout ce qui n'est pas un succès (dont une redirection, jamais suivie) est un refus.
             if (! $response->successful()) {
-                throw new IdentityRejected($response->status(), error: is_string($response->json('error')) ? $response->json('error') : null);
+                $body = $response->json();
+
+                throw new IdentityRejected($response->status(), error: is_array($body) && is_string($body['error'] ?? null) ? $body['error'] : null, body: is_array($body) ? $body : []);
             }
 
             return $response;
