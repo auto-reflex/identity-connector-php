@@ -2,16 +2,16 @@
 
 namespace Workbench\App\Providers;
 
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
-use AutoReflex\IdentityConnector\Events\AccountDeletionCancelled;
-use AutoReflex\IdentityConnector\Events\AccountDeletionDue;
-use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
-use AutoReflex\IdentityConnector\Events\AccountReinstated;
-use AutoReflex\IdentityConnector\Events\AccountSuspended;
-use AutoReflex\IdentityConnector\Events\VehicleDeleted;
-use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
-use AutoReflex\IdentityConnector\Profiles\ProfileStore;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Events\AccountDeletionCancelled;
+use AutoGteck\IdentityConnector\Events\AccountDeletionDue;
+use AutoGteck\IdentityConnector\Events\AccountDeletionRequested;
+use AutoGteck\IdentityConnector\Events\AccountReinstated;
+use AutoGteck\IdentityConnector\Events\AccountSuspended;
+use AutoGteck\IdentityConnector\Events\VehicleDeleted;
+use AutoGteck\IdentityConnector\Events\VehicleUnlinked;
+use AutoGteck\IdentityConnector\Profiles\ProfileStore;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Request;

@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 /**
  * Une organisation Identity vue par une personne : son rôle (`owner`, `admin`, `member`) et, pour le

@@ -16,7 +16,7 @@ env:
   IDENTITY_VEHICLES_CACHE_SECONDS: 0
 
 providers:
-  - AutoReflex\IdentityConnector\IdentityServiceProvider
+  - AutoGteck\IdentityConnector\IdentityServiceProvider
   - Workbench\App\Providers\WorkbenchServiceProvider
 
 migrations:

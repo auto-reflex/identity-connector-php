@@ -1,6 +1,6 @@
-# AutoReflex Identity Connector
+# AutoGteck Identity Connector
 
-Package Laravel commun des APIs AutoReflex (AutoDonuts, AutoTrackly, AutoReflexPro, Map) pour s'appuyer sur le
+Package Laravel commun des APIs AutoGteck (AutoDonuts, AutoTrackly, AutoWorky, AutoReflex) pour s'appuyer sur le
 service [Identity](../identity). Contrat : `AR-032` et `AR-052` à `AR-059` dans
 `docs/ecosystem/DECISIONS.md`.
 
@@ -22,11 +22,11 @@ sans authentification. Distribution, CI et Docker : `docs/connecteur/distributio
 
 ```json
 "repositories": [{ "type": "vcs", "url": "https://github.com/auto-reflex/identity-connector-php.git" }],
-"require": { "autoreflex/identity-connector": "^0.1" }
+"require": { "autogteck/identity-connector": "^0.1" }
 ```
 
 Pour développer le connecteur et une API en même temps, remplacer localement le dépôt par un lien (sans commiter) :
-`composer config repositories.identity-connector path ../../identity-connector && composer update autoreflex/identity-connector`.
+`composer config repositories.identity-connector path ../../identity-connector && composer update autogteck/identity-connector`.
 
 Guide pas à pas pour brancher un produit (API, mobile, vérification) : `docs/connecteur/` à la racine du monorepo.
 
@@ -109,8 +109,8 @@ Identity::token()->roles;     // list<string>
 ## Appeler Identity
 
 ```php
-use AutoReflex\IdentityConnector\Facades\Identity;
-use AutoReflex\IdentityConnector\Client\{IdentityUnavailable, IdentityRejected};
+use AutoGteck\IdentityConnector\Facades\Identity;
+use AutoGteck\IdentityConnector\Client\{IdentityUnavailable, IdentityRejected};
 
 try {
     $organizations = Identity::organizations();          // de la personne de la requête, avec son rôle
@@ -133,7 +133,7 @@ Le connecteur expose `POST /identity/webhooks` (chemin configurable). Il vérifi
 l'horodatage (±5 min), écarte les rejeux et déclenche des événements Laravel locaux :
 
 ```php
-Event::listen(AutoReflex\IdentityConnector\Events\AccountSuspended::class, function ($event) {
+Event::listen(AutoGteck\IdentityConnector\Events\AccountSuspended::class, function ($event) {
     // $event->userId, $event->eventId, $event->occurredAt — traitement idempotent : livraison « au moins une fois »
 });
 ```
@@ -168,7 +168,7 @@ Identity::vehicleClient()->publicMany($ids, reader: 'anonymous');      // tiers,
 
 ## Suppression de compte (AR-055, AR-056)
 
-Quand une personne supprime son compte AutoReflex, le produit reçoit trois événements, dans cet ordre :
+Quand une personne supprime son compte AutoGteck, le produit reçoit trois événements, dans cet ordre :
 
 1. `AccountDeletionRequested` (`scheduledFor`) : **verrouiller** le profil, sans rien effacer ; la personne a 30 jours
    pour changer d'avis.
@@ -191,7 +191,7 @@ référençait cette organisation. Un compte dont `accountStatus()->deletion` n'
 ## Tester une API produit sans Identity
 
 ```php
-use AutoReflex\IdentityConnector\Testing\FakesIdentity;
+use AutoGteck\IdentityConnector\Testing\FakesIdentity;
 
 uses(FakesIdentity::class);
 

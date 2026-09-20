@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Jwt;
+namespace AutoGteck\IdentityConnector\Jwt;
 
 use Firebase\JWT\Key;
 

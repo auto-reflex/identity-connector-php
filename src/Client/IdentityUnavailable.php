@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 use RuntimeException;
 

@@ -1,7 +1,7 @@
 <?php
 
-use AutoReflex\IdentityConnector\Profiles\IdentityUser;
-use AutoReflex\IdentityConnector\Profiles\ProfileStore;
+use AutoGteck\IdentityConnector\Profiles\IdentityUser;
+use AutoGteck\IdentityConnector\Profiles\ProfileStore;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\UniqueConstraintViolationException;

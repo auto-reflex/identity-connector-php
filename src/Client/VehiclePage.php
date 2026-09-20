@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 /**
  * Une page du garage d'une personne : les véhicules et le curseur de la suivante (`null` à la fin).

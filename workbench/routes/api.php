@@ -1,8 +1,8 @@
 <?php
 
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\Vehicle;
-use AutoReflex\IdentityConnector\Facades\Identity;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\Vehicle;
+use AutoGteck\IdentityConnector\Facades\Identity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;

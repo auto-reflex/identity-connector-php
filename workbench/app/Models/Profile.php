@@ -2,7 +2,7 @@
 
 namespace Workbench\App\Models;
 
-use AutoReflex\IdentityConnector\Profiles\SuspendableProfile;
+use AutoGteck\IdentityConnector\Profiles\SuspendableProfile;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Carbon;
 

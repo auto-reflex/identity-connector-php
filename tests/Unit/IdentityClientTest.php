@@ -1,9 +1,9 @@
 <?php
 
-use AutoReflex\IdentityConnector\Client\IdentityClient;
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
-use AutoReflex\IdentityConnector\Testing\FakeIdentity;
+use AutoGteck\IdentityConnector\Client\IdentityClient;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Testing\FakeIdentity;
 use Carbon\Carbon;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;

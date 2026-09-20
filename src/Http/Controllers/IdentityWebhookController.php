@@ -1,15 +1,15 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Http\Controllers;
+namespace AutoGteck\IdentityConnector\Http\Controllers;
 
-use AutoReflex\IdentityConnector\Events\AccountDeletionCancelled;
-use AutoReflex\IdentityConnector\Events\AccountDeletionDue;
-use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
-use AutoReflex\IdentityConnector\Events\AccountReinstated;
-use AutoReflex\IdentityConnector\Events\AccountSuspended;
-use AutoReflex\IdentityConnector\Events\OrganizationDeleted;
-use AutoReflex\IdentityConnector\Events\VehicleDeleted;
-use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
+use AutoGteck\IdentityConnector\Events\AccountDeletionCancelled;
+use AutoGteck\IdentityConnector\Events\AccountDeletionDue;
+use AutoGteck\IdentityConnector\Events\AccountDeletionRequested;
+use AutoGteck\IdentityConnector\Events\AccountReinstated;
+use AutoGteck\IdentityConnector\Events\AccountSuspended;
+use AutoGteck\IdentityConnector\Events\OrganizationDeleted;
+use AutoGteck\IdentityConnector\Events\VehicleDeleted;
+use AutoGteck\IdentityConnector\Events\VehicleUnlinked;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\JsonResponse;

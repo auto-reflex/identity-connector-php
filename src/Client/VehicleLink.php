@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 /**
  * Le lien d'un véhicule avec ce produit : les groupes que le produit lit, la visibilité choisie par le propriétaire.

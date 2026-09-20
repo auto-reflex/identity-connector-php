@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Http\Client\Response;

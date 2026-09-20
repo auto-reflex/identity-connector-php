@@ -1,8 +1,8 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Http\Middleware;
+namespace AutoGteck\IdentityConnector\Http\Middleware;
 
-use AutoReflex\IdentityConnector\Jwt\VerifiedToken;
+use AutoGteck\IdentityConnector\Jwt\VerifiedToken;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;

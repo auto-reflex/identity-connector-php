@@ -1,6 +1,6 @@
 {
-    "name": "autoreflex/identity-connector",
-    "description": "Connecteur Laravel commun des APIs AutoReflex pour Identity : vérification des JWT, profils locaux, client de l'API Identity, webhooks.",
+    "name": "autogteck/identity-connector",
+    "description": "Connecteur Laravel commun des APIs AutoGteck pour Identity : vérification des JWT, profils locaux, client de l'API Identity, webhooks.",
     "type": "library",
     "license": "proprietary",
     "require": {
@@ -22,7 +22,7 @@
     },
     "autoload": {
         "psr-4": {
-            "AutoReflex\\IdentityConnector\\": "src/"
+            "AutoGteck\\IdentityConnector\\": "src/"
         }
     },
     "autoload-dev": {
@@ -35,10 +35,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "AutoReflex\\IdentityConnector\\IdentityServiceProvider"
+                "AutoGteck\\IdentityConnector\\IdentityServiceProvider"
             ],
             "aliases": {
-                "Identity": "AutoReflex\\IdentityConnector\\Facades\\Identity"
+                "Identity": "AutoGteck\\IdentityConnector\\Facades\\Identity"
             }
         }
     },

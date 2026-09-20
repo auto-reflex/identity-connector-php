@@ -2,8 +2,8 @@
 
 namespace Workbench\App;
 
-use AutoReflex\IdentityConnector\Profiles\IdentityUser;
-use AutoReflex\IdentityConnector\Profiles\ProfileStore;
+use AutoGteck\IdentityConnector\Profiles\IdentityUser;
+use AutoGteck\IdentityConnector\Profiles\ProfileStore;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Workbench\App\Models\Profile;
 

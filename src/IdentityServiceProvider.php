@@ -1,17 +1,17 @@
 <?php
 
-namespace AutoReflex\IdentityConnector;
+namespace AutoGteck\IdentityConnector;
 
-use AutoReflex\IdentityConnector\Client\IdentityClient;
-use AutoReflex\IdentityConnector\Client\VehicleClient;
-use AutoReflex\IdentityConnector\Http\Controllers\IdentityWebhookController;
-use AutoReflex\IdentityConnector\Http\Middleware\AuthenticateIdentity;
-use AutoReflex\IdentityConnector\Http\Middleware\RequireRole;
-use AutoReflex\IdentityConnector\Http\Middleware\ResolveProfile;
-use AutoReflex\IdentityConnector\Http\Middleware\VerifyIdentitySignature;
-use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
-use AutoReflex\IdentityConnector\Jwt\KeySetProvider;
-use AutoReflex\IdentityConnector\Jwt\RemoteKeySet;
+use AutoGteck\IdentityConnector\Client\IdentityClient;
+use AutoGteck\IdentityConnector\Client\VehicleClient;
+use AutoGteck\IdentityConnector\Http\Controllers\IdentityWebhookController;
+use AutoGteck\IdentityConnector\Http\Middleware\AuthenticateIdentity;
+use AutoGteck\IdentityConnector\Http\Middleware\RequireRole;
+use AutoGteck\IdentityConnector\Http\Middleware\ResolveProfile;
+use AutoGteck\IdentityConnector\Http\Middleware\VerifyIdentitySignature;
+use AutoGteck\IdentityConnector\Jwt\JwtVerifier;
+use AutoGteck\IdentityConnector\Jwt\KeySetProvider;
+use AutoGteck\IdentityConnector\Jwt\RemoteKeySet;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Encryption\StringEncrypter;

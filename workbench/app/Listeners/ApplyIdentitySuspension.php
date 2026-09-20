@@ -2,8 +2,8 @@
 
 namespace Workbench\App\Listeners;
 
-use AutoReflex\IdentityConnector\Events\AccountReinstated;
-use AutoReflex\IdentityConnector\Events\AccountSuspended;
+use AutoGteck\IdentityConnector\Events\AccountReinstated;
+use AutoGteck\IdentityConnector\Events\AccountSuspended;
 use Workbench\App\Models\Profile;
 
 /**

@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Events;
+namespace AutoGteck\IdentityConnector\Events;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Events\Dispatchable;

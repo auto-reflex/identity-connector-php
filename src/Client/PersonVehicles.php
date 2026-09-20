@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 /**
  * Les véhicules vus par la personne de la requête en cours : `Identity::vehicles()`. Chaque appel porte son token produit.

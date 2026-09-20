@@ -1,6 +1,6 @@
 <?php
 
-use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
+use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 
 const VECTOR_SECRET = 'whsec_0123456789abcdef0123456789abcdef';

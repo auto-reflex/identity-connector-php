@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
 /**
  * Un véhicule tel qu'Identity l'autorise à ce demandeur (AR-059) : seuls les groupes autorisés et demandés sont présents

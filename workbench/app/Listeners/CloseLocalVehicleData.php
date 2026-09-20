@@ -2,8 +2,8 @@
 
 namespace Workbench\App\Listeners;
 
-use AutoReflex\IdentityConnector\Events\VehicleDeleted;
-use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
+use AutoGteck\IdentityConnector\Events\VehicleDeleted;
+use AutoGteck\IdentityConnector\Events\VehicleUnlinked;
 use Workbench\App\Models\VehicleNote;
 
 /**

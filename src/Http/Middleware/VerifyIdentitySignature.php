@@ -1,8 +1,8 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Http\Middleware;
+namespace AutoGteck\IdentityConnector\Http\Middleware;
 
-use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
+use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;

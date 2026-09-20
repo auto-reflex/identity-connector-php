@@ -1,13 +1,13 @@
 <?php
 
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
-use AutoReflex\IdentityConnector\Client\VehicleClient;
-use AutoReflex\IdentityConnector\Events\VehicleDeleted;
-use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
-use AutoReflex\IdentityConnector\Facades\Identity;
-use AutoReflex\IdentityConnector\IdentityManager;
-use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Client\VehicleClient;
+use AutoGteck\IdentityConnector\Events\VehicleDeleted;
+use AutoGteck\IdentityConnector\Events\VehicleUnlinked;
+use AutoGteck\IdentityConnector\Facades\Identity;
+use AutoGteck\IdentityConnector\IdentityManager;
+use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;

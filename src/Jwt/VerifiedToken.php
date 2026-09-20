@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Jwt;
+namespace AutoGteck\IdentityConnector\Jwt;
 
 /**
  * Claims d'un access token dont la signature, l'émetteur, l'audience et l'expiration ont été vérifiés.

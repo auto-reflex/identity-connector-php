@@ -1,15 +1,15 @@
 <?php
 
-use AutoReflex\IdentityConnector\Client\IdentityClient;
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
-use AutoReflex\IdentityConnector\Events\AccountDeletionCancelled;
-use AutoReflex\IdentityConnector\Events\AccountDeletionDue;
-use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
-use AutoReflex\IdentityConnector\Events\OrganizationDeleted;
-use AutoReflex\IdentityConnector\Facades\Identity;
-use AutoReflex\IdentityConnector\IdentityManager;
-use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
+use AutoGteck\IdentityConnector\Client\IdentityClient;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Events\AccountDeletionCancelled;
+use AutoGteck\IdentityConnector\Events\AccountDeletionDue;
+use AutoGteck\IdentityConnector\Events\AccountDeletionRequested;
+use AutoGteck\IdentityConnector\Events\OrganizationDeleted;
+use AutoGteck\IdentityConnector\Facades\Identity;
+use AutoGteck\IdentityConnector\IdentityManager;
+use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;

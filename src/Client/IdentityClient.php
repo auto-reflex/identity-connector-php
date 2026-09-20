@@ -1,8 +1,8 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Client;
+namespace AutoGteck\IdentityConnector\Client;
 
-use AutoReflex\IdentityConnector\Profiles\IdentityUser;
+use AutoGteck\IdentityConnector\Profiles\IdentityUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Encryption\DecryptException;

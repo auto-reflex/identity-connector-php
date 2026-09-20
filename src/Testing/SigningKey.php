@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Testing;
+namespace AutoGteck\IdentityConnector\Testing;
 
 use Firebase\JWT\JWT;
 use RuntimeException;

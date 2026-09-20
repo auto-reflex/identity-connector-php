@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Profiles;
+namespace AutoGteck\IdentityConnector\Profiles;
 
 /**
  * Un profil produit peut être suspendu localement sans que le compte Identity le soit

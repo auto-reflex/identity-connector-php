@@ -2,8 +2,8 @@
 
 namespace Tests\Support;
 
-use AutoReflex\IdentityConnector\Jwt\KeySetProvider;
-use AutoReflex\IdentityConnector\Testing\SigningKey;
+use AutoGteck\IdentityConnector\Jwt\KeySetProvider;
+use AutoGteck\IdentityConnector\Testing\SigningKey;
 use Firebase\JWT\JWK;
 use Firebase\JWT\Key;
 

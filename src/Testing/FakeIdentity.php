@@ -1,8 +1,8 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Testing;
+namespace AutoGteck\IdentityConnector\Testing;
 
-use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
+use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Firebase\JWT\JWT;
 use GuzzleHttp\Promise\PromiseInterface;

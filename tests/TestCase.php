@@ -2,8 +2,8 @@
 
 namespace Tests;
 
-use AutoReflex\IdentityConnector\IdentityServiceProvider;
-use AutoReflex\IdentityConnector\Testing\FakesIdentity;
+use AutoGteck\IdentityConnector\IdentityServiceProvider;
+use AutoGteck\IdentityConnector\Testing\FakesIdentity;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Workbench\App\Providers\WorkbenchServiceProvider;
 

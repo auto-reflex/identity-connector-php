@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Profiles;
+namespace AutoGteck\IdentityConnector\Profiles;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 

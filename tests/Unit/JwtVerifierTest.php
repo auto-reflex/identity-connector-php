@@ -1,8 +1,8 @@
 <?php
 
-use AutoReflex\IdentityConnector\Jwt\InvalidAccessToken;
-use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
-use AutoReflex\IdentityConnector\Testing\SigningKey;
+use AutoGteck\IdentityConnector\Jwt\InvalidAccessToken;
+use AutoGteck\IdentityConnector\Jwt\JwtVerifier;
+use AutoGteck\IdentityConnector\Testing\SigningKey;
 use Carbon\Carbon;
 use Firebase\JWT\JWT;
 use Tests\Support\StaticKeySet;

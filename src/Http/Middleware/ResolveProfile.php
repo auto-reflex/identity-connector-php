@@ -1,13 +1,13 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Http\Middleware;
+namespace AutoGteck\IdentityConnector\Http\Middleware;
 
-use AutoReflex\IdentityConnector\Client\IdentityClient;
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
-use AutoReflex\IdentityConnector\Jwt\VerifiedToken;
-use AutoReflex\IdentityConnector\Profiles\ProfileStore;
-use AutoReflex\IdentityConnector\Profiles\SuspendableProfile;
+use AutoGteck\IdentityConnector\Client\IdentityClient;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Jwt\VerifiedToken;
+use AutoGteck\IdentityConnector\Profiles\ProfileStore;
+use AutoGteck\IdentityConnector\Profiles\SuspendableProfile;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;

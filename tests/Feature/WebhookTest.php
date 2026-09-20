@@ -1,8 +1,8 @@
 <?php
 
-use AutoReflex\IdentityConnector\Events\AccountReinstated;
-use AutoReflex\IdentityConnector\Events\AccountSuspended;
-use AutoReflex\IdentityConnector\Webhooks\WebhookSignature;
+use AutoGteck\IdentityConnector\Events\AccountReinstated;
+use AutoGteck\IdentityConnector\Events\AccountSuspended;
+use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;

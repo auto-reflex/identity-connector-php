@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Profiles;
+namespace AutoGteck\IdentityConnector\Profiles;
 
 /**
  * Ce qu'Identity dit d'une personne (`/userinfo`), selon les scopes du token. `null` = donnée non consentie.

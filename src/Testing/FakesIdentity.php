@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Testing;
+namespace AutoGteck\IdentityConnector\Testing;
 
 /**
  * Pour les tests d'une API produit : `$this->fakeIdentity('autotrackly-api')` remplace Identity.

@@ -1,13 +1,13 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Facades;
+namespace AutoGteck\IdentityConnector\Facades;
 
-use AutoReflex\IdentityConnector\Client\IdentityClient;
-use AutoReflex\IdentityConnector\Client\Organization;
-use AutoReflex\IdentityConnector\Client\PersonVehicles;
-use AutoReflex\IdentityConnector\Client\VehicleClient;
-use AutoReflex\IdentityConnector\IdentityManager;
-use AutoReflex\IdentityConnector\Jwt\VerifiedToken;
+use AutoGteck\IdentityConnector\Client\IdentityClient;
+use AutoGteck\IdentityConnector\Client\Organization;
+use AutoGteck\IdentityConnector\Client\PersonVehicles;
+use AutoGteck\IdentityConnector\Client\VehicleClient;
+use AutoGteck\IdentityConnector\IdentityManager;
+use AutoGteck\IdentityConnector\Jwt\VerifiedToken;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Facade;
 

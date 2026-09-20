@@ -1,15 +1,15 @@
 <?php
 
-namespace AutoReflex\IdentityConnector;
+namespace AutoGteck\IdentityConnector;
 
-use AutoReflex\IdentityConnector\Client\IdentityClient;
-use AutoReflex\IdentityConnector\Client\IdentityRejected;
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
-use AutoReflex\IdentityConnector\Client\Organization;
-use AutoReflex\IdentityConnector\Client\PersonVehicles;
-use AutoReflex\IdentityConnector\Client\VehicleClient;
-use AutoReflex\IdentityConnector\Http\Middleware\AuthenticateIdentity;
-use AutoReflex\IdentityConnector\Jwt\VerifiedToken;
+use AutoGteck\IdentityConnector\Client\IdentityClient;
+use AutoGteck\IdentityConnector\Client\IdentityRejected;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Client\Organization;
+use AutoGteck\IdentityConnector\Client\PersonVehicles;
+use AutoGteck\IdentityConnector\Client\VehicleClient;
+use AutoGteck\IdentityConnector\Http\Middleware\AuthenticateIdentity;
+use AutoGteck\IdentityConnector\Jwt\VerifiedToken;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;

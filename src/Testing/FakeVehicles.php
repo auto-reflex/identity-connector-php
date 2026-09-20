@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Testing;
+namespace AutoGteck\IdentityConnector\Testing;
 
 use Carbon\Carbon;
 use GuzzleHttp\Promise\PromiseInterface;

@@ -1,12 +1,12 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Events;
+namespace AutoGteck\IdentityConnector\Events;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * La personne a demandé la suppression de son compte AutoReflex (AR-055) : le produit **verrouille** son profil,
+ * La personne a demandé la suppression de son compte AutoGteck (AR-055) : le produit **verrouille** son profil,
  * sans l'effacer. L'effacement n'a lieu qu'à `scheduledFor`, sur `AccountDeletionDue`, sauf annulation.
  */
 class AccountDeletionRequested

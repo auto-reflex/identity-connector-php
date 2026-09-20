@@ -2,14 +2,14 @@
 
 namespace Workbench\App\Listeners;
 
-use AutoReflex\IdentityConnector\Events\AccountDeletionCancelled;
-use AutoReflex\IdentityConnector\Events\AccountDeletionDue;
-use AutoReflex\IdentityConnector\Events\AccountDeletionRequested;
-use AutoReflex\IdentityConnector\Facades\Identity;
+use AutoGteck\IdentityConnector\Events\AccountDeletionCancelled;
+use AutoGteck\IdentityConnector\Events\AccountDeletionDue;
+use AutoGteck\IdentityConnector\Events\AccountDeletionRequested;
+use AutoGteck\IdentityConnector\Facades\Identity;
 use Workbench\App\Models\Profile;
 
 /**
- * Ce que fait un produit de la suppression d'un compte AutoReflex (AR-055, AR-056) :
+ * Ce que fait un produit de la suppression d'un compte AutoGteck (AR-055, AR-056) :
  * demandée → il verrouille le profil ; annulée → il le déverrouille ; échue → il **efface**, puis **accuse**.
  * Si l'accusé échoue, l'exception remonte : Identity renverra l'événement, et l'effacement se rejoue sans effet.
  */

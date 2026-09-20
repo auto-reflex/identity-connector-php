@@ -1,6 +1,6 @@
 <?php
 
-use AutoReflex\IdentityConnector\Client\IdentityUnavailable;
+use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
 use Carbon\Carbon;
 
 const ORG_PERSON = '01J0USER00000000000000000A';

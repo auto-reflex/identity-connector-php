@@ -1,6 +1,6 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Webhooks;
+namespace AutoGteck\IdentityConnector\Webhooks;
 
 use Carbon\Carbon;
 

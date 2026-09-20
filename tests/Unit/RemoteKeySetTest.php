@@ -1,8 +1,8 @@
 <?php
 
-use AutoReflex\IdentityConnector\Jwt\KeySetUnavailable;
-use AutoReflex\IdentityConnector\Jwt\RemoteKeySet;
-use AutoReflex\IdentityConnector\Testing\SigningKey;
+use AutoGteck\IdentityConnector\Jwt\KeySetUnavailable;
+use AutoGteck\IdentityConnector\Jwt\RemoteKeySet;
+use AutoGteck\IdentityConnector\Testing\SigningKey;
 use Carbon\Carbon;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Cache\ArrayStore;

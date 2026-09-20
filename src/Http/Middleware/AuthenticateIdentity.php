@@ -1,10 +1,10 @@
 <?php
 
-namespace AutoReflex\IdentityConnector\Http\Middleware;
+namespace AutoGteck\IdentityConnector\Http\Middleware;
 
-use AutoReflex\IdentityConnector\Jwt\InvalidAccessToken;
-use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
-use AutoReflex\IdentityConnector\Jwt\KeySetUnavailable;
+use AutoGteck\IdentityConnector\Jwt\InvalidAccessToken;
+use AutoGteck\IdentityConnector\Jwt\JwtVerifier;
+use AutoGteck\IdentityConnector\Jwt\KeySetUnavailable;
 use Closure;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Http\Request;
