@@ -17,12 +17,15 @@ Il ne possède aucune table, aucun modèle, aucune route métier : le produit ga
 
 ## Installation
 
-Pas encore de dépôt privé : en développement, un dépôt Composer de type `path`.
+Pas encore de dépôt privé : en développement, un dépôt Composer de type `path` (`dev-main`, et non `@dev` :
+`composer validate --strict` refuse les contraintes non bornées). Distribution, CI et Docker : `docs/connecteur/distribution.md`.
 
 ```json
-"repositories": [{ "type": "path", "url": "../identity-connector" }],
-"require": { "autoreflex/identity-connector": "@dev" }
+"repositories": [{ "type": "path", "url": "../../identity-connector" }],
+"require": { "autoreflex/identity-connector": "dev-main" }
 ```
+
+Guide pas à pas pour brancher un produit (API, mobile, vérification) : `docs/connecteur/` à la racine du monorepo.
 
 Le service provider et la façade `Identity` sont découverts automatiquement. Publier la configuration si besoin :
 `php artisan vendor:publish --tag=identity-connector-config`.
