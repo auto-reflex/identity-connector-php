@@ -54,7 +54,7 @@ Route::middleware(['identity.auth:autodonuts:access', 'identity.profile'])->grou
   n'est disponible (Identity injoignable et cache vide). Le token vérifié est dans `Identity::token()`.
 - `identity.profile` (après `identity.auth`) : charge le profil ; au premier appel, lit `/userinfo` avec le token
   reçu, refuse un email non vérifié (403), refuse un token de service (403), et **503** si Identity ne répond pas
-  à ce moment-là. Une personne déjà connue n'a jamais besoin d'Identity pour être authentifiée.
+  à ce moment-là. Une personne déjà connue n'a jamais besoin d'Identity pour être authentifiée. Le profil est l'utilisateur de la requête et du garde par défaut : `$request->user()`, `auth()->user()`, le `Gate` et les policies voient la même personne.
 
 Le produit branche son modèle en implémentant `ProfileStore` :
 

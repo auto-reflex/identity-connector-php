@@ -4,6 +4,7 @@ use AutoReflex\IdentityConnector\Client\IdentityRejected;
 use AutoReflex\IdentityConnector\Client\Vehicle;
 use AutoReflex\IdentityConnector\Facades\Identity;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Workbench\App\Models\VehicleNote;
 
@@ -12,6 +13,12 @@ Route::prefix('api')->group(function (): void {
         'id' => $request->user()->id,
         'identity_user_id' => $request->user()->identity_user_id,
         'display_name' => $request->user()->display_name,
+    ]);
+
+    // Ce que voient `auth()` et le `Gate` (donc les policies) : la même personne que `$request->user()`.
+    Route::middleware(['identity.auth:profile', 'identity.profile'])->get('/guard-user/{id}', fn (string $id) => [
+        'guard_user' => auth()->user()?->identity_user_id,
+        'gate_allows' => Gate::allows('own-profile', $id),
     ]);
 
     // Ressource protégée par un scope que le token de test n'a pas par défaut.

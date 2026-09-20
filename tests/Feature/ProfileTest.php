@@ -35,6 +35,16 @@ it('creates the local profile at the first request from /userinfo, once', functi
         ->and($this->identity->userInfoCalls())->toBe(1);
 });
 
+it('makes the profile the user of the default guard, so that the Gate and the policies see it', function () {
+    $this->getJson('/api/guard-user/'.PERSON, authorization($this->identity->tokenFor(PERSON)))
+        ->assertOk()
+        ->assertJson(['guard_user' => PERSON, 'gate_allows' => true]);
+
+    $this->getJson('/api/guard-user/someone-else', authorization($this->identity->tokenFor(PERSON)))
+        ->assertOk()
+        ->assertJson(['gate_allows' => false]);
+});
+
 it('keeps working for a known person while Identity is down (degraded mode)', function () {
     $this->getJson('/api/me', authorization($this->identity->tokenFor(PERSON)))->assertOk();
     $token = $this->identity->tokenFor(PERSON);

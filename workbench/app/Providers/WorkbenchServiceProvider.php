@@ -14,11 +14,13 @@ use AutoReflex\IdentityConnector\Events\VehicleUnlinked;
 use AutoReflex\IdentityConnector\Profiles\ProfileStore;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\EloquentProfileStore;
 use Workbench\App\Listeners\ApplyIdentityDeletion;
 use Workbench\App\Listeners\ApplyIdentitySuspension;
 use Workbench\App\Listeners\CloseLocalVehicleData;
+use Workbench\App\Models\Profile;
 
 /**
  * Application de test du connecteur : une API produit minimale, telle qu'AutoTrackly ou AutoDonuts la brancheront.
@@ -45,6 +47,8 @@ class WorkbenchServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
         $this->loadRoutesFrom(__DIR__.'/../../routes/api.php');
+
+        Gate::define('own-profile', fn (Profile $profile, string $identityUserId) => $profile->identity_user_id === $identityUserId);
 
         Event::listen([AccountSuspended::class, AccountReinstated::class], ApplyIdentitySuspension::class);
         Event::listen([VehicleDeleted::class, VehicleUnlinked::class], CloseLocalVehicleData::class);
