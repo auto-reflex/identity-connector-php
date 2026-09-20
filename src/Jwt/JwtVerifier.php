@@ -63,7 +63,22 @@ final class JwtVerifier
             tokenId: (string) $claims['jti'],
             scopes: array_values(array_filter(explode(' ', (string) ($claims['scope'] ?? '')))),
             expiresAt: (int) $claims['exp'],
+            roles: self::roles($claims['roles'] ?? null),
         );
+    }
+
+    /**
+     * Le claim `roles` est une liste de noms ; toute autre forme est ignorée (aucun rôle), jamais interprétée.
+     *
+     * @return list<string>
+     */
+    private static function roles(mixed $claim): array
+    {
+        if (! is_array($claim)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter($claim, fn (mixed $role): bool => is_string($role) && $role !== '')));
     }
 
     /**

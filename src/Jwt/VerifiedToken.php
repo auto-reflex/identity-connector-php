@@ -9,6 +9,7 @@ final readonly class VerifiedToken
 {
     /**
      * @param  list<string>  $scopes
+     * @param  list<string>  $roles  rôles d'équipe de la personne dans ce produit (claim `roles`, AR-066)
      */
     public function __construct(
         public string $subject,
@@ -17,11 +18,17 @@ final readonly class VerifiedToken
         public string $tokenId,
         public array $scopes,
         public int $expiresAt,
+        public array $roles = [],
     ) {}
 
     public function hasScope(string $scope): bool
     {
         return in_array($scope, $this->scopes, true);
+    }
+
+    public function hasRole(string $role): bool
+    {
+        return in_array($role, $this->roles, true);
     }
 
     /**

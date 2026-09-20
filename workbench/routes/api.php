@@ -76,6 +76,12 @@ Route::prefix('api')->group(function (): void {
         return ['data' => array_map(fn (Vehicle $vehicle) => ['id' => $vehicle->id, 'groups' => $vehicle->groups, 'stale' => $vehicle->stale], Identity::vehicleClient()->publicMany(explode(',', (string) $request->query('ids')), $reader))];
     });
 
+    // Rôles d'équipe portés par le token (AR-066).
+    Route::middleware(['identity.auth', 'identity.role:admin'])->get('/team/admin', fn () => ['ok' => true]);
+    Route::middleware(['identity.auth', 'identity.role:admin,moderator'])->get('/team/any', fn () => ['roles' => Identity::token()->roles]);
+    Route::middleware('identity.role:admin')->get('/team/no-auth', fn () => ['ok' => true]);
+    Route::middleware('identity.auth')->get('/team/has/{role}', fn (string $role) => ['has' => Identity::hasRole($role)]);
+
     // Sans profil : authentification seule.
     Route::middleware('identity.auth')->get('/whoami', fn (Request $request) => ['sub' => Identity::token()->subject]);
 });

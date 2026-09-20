@@ -6,6 +6,7 @@ use AutoReflex\IdentityConnector\Client\IdentityClient;
 use AutoReflex\IdentityConnector\Client\VehicleClient;
 use AutoReflex\IdentityConnector\Http\Controllers\IdentityWebhookController;
 use AutoReflex\IdentityConnector\Http\Middleware\AuthenticateIdentity;
+use AutoReflex\IdentityConnector\Http\Middleware\RequireRole;
 use AutoReflex\IdentityConnector\Http\Middleware\ResolveProfile;
 use AutoReflex\IdentityConnector\Http\Middleware\VerifyIdentitySignature;
 use AutoReflex\IdentityConnector\Jwt\JwtVerifier;
@@ -81,6 +82,7 @@ class IdentityServiceProvider extends ServiceProvider
     {
         Route::aliasMiddleware('identity.auth', AuthenticateIdentity::class);
         Route::aliasMiddleware('identity.profile', ResolveProfile::class);
+        Route::aliasMiddleware('identity.role', RequireRole::class);
 
         $this->registerWebhookRoute();
 

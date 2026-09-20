@@ -83,6 +83,29 @@ class EloquentProfileStore implements ProfileStore
 
 Un profil qui implémente `SuspendableProfile` et se dit suspendu reçoit 403 : c'est la suspension **locale** du produit.
 
+## Rôles d'équipe (AR-066)
+
+Identity met les **rôles d'équipe** de la personne dans son token (claim `roles`), pour ce produit uniquement : un **super
+administrateur** reçoit tous les rôles déclarés pour l'audience, sans qu'aucun produit n'ait rien à accorder ; les autres
+membres de l'équipe reçoivent ceux qu'un super administrateur leur a accordés dans la console d'Identity. Le produit ne
+stocke aucun rôle : il décide seulement **ce que chaque rôle permet**.
+
+```php
+Route::middleware(['identity.auth:autodonuts:access,autodonuts:admin', 'identity.profile', 'identity.role:admin'])
+    ->prefix('admin')->group(function () { /* ... */ });
+
+Identity::hasRole('admin');   // dans le code : la personne de la requête a-t-elle ce rôle ?
+Identity::token()->roles;     // list<string>
+```
+
+- `identity.role:admin,moderator` : l'un **ou** l'autre. À placer après `identity.auth`, sinon 401.
+- Sans le rôle : `403 {"error": "insufficient_role"}` (à convertir au format d'erreur du produit, comme les autres refus).
+- Un retrait de rôle s'applique au plus tard à l'expiration du token en cours (15 minutes) ; un claim `roles` qui n'est pas
+  une liste de noms est ignoré (aucun rôle).
+- Un scope réservé (par exemple `autodonuts:admin`, demandé par le seul client du back-office) reste utile en plus du
+  rôle : un token de l'application mobile d'un administrateur porte ses rôles, mais pas ce scope.
+- Tests : `$identity->tokenFor($id, claims: ['roles' => ['admin']])`.
+
 ## Appeler Identity
 
 ```php

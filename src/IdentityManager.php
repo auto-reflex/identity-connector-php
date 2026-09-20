@@ -40,6 +40,14 @@ class IdentityManager
     }
 
     /**
+     * La personne de la requête en cours a-t-elle ce rôle d'équipe dans ce produit (AR-066) ?
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->token()?->hasRole($role) ?? false;
+    }
+
+    /**
      * Le profil local de la requête en cours (après `identity.profile`).
      */
     public function profile(): ?Authenticatable
