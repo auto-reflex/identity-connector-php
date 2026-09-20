@@ -55,6 +55,7 @@ Route::prefix('api')->group(function (): void {
 
             return response()->noContent();
         });
+        Route::get('/vehicles/{id}/notes', fn (string $id) => ['count' => VehicleNote::query()->where('identity_vehicle_id', $id)->count()]);
         Route::post('/vehicles/{id}/notes', fn (Request $request, string $id) => VehicleNote::query()->create(['identity_vehicle_id' => $id, 'note' => (string) $request->json('note')]));
     });
 

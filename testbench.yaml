@@ -12,6 +12,8 @@ env:
   IDENTITY_SERVICE_CLIENT_ID: autodonuts-api-service
   IDENTITY_SERVICE_CLIENT_SECRET: smoke-service-secret-0123456789abcdef
   IDENTITY_JWKS_RELOAD_SECONDS: 1
+  # Le smoke vérifie les règles d'accès d'Identity, pas le cache court des lectures (couvert par les tests) : sans cache, un changement se voit aussitôt.
+  IDENTITY_VEHICLES_CACHE_SECONDS: 0
 
 providers:
   - AutoReflex\IdentityConnector\IdentityServiceProvider

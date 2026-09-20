@@ -188,12 +188,13 @@ step('inscription et email de vérification reçu', $link !== null);
 $http->get(preg_replace('#^https?://[^/]+#', IDENTITY_URL, $link));
 
 /** @return array{access_token: string, refresh_token: string} */
-$login = function () use ($http, $plain, $redirect): array {
+$login = function (string $client = 'autodonuts-mobile', ?string $clientRedirect = null, string $scope = 'profile email autodonuts:access vehicles:read vehicles:write organizations:read') use ($http, $plain, $redirect): array {
+    $clientRedirect ??= $redirect;
     $verifier = b64url(random_bytes(64));
     $state = b64url(random_bytes(12));
     $query = http_build_query([
-        'client_id' => 'autodonuts-mobile', 'redirect_uri' => $redirect, 'response_type' => 'code',
-        'scope' => 'profile email autodonuts:access vehicles:read vehicles:write organizations:read', 'state' => $state,
+        'client_id' => $client, 'redirect_uri' => $clientRedirect, 'response_type' => 'code',
+        'scope' => $scope, 'state' => $state,
         'code_challenge' => b64url(hash('sha256', $verifier, true)), 'code_challenge_method' => 'S256',
     ]);
 
@@ -201,13 +202,13 @@ $login = function () use ($http, $plain, $redirect): array {
     if ($response->getStatusCode() === 200) {
         $html = (string) $response->getBody();
         $response = $http->post('/oauth/authorize', ['form_params' => [
-            '_token' => field($html, '_token'), 'state' => $state, 'client_id' => 'autodonuts-mobile', 'auth_token' => field($html, 'auth_token'),
+            '_token' => field($html, '_token'), 'state' => $state, 'client_id' => $client, 'auth_token' => field($html, 'auth_token'),
         ]]);
     }
     parse_str((string) parse_url($response->getHeaderLine('Location'), PHP_URL_QUERY), $callback);
 
     return json_decode((string) $plain->post('/oauth/token', ['form_params' => [
-        'grant_type' => 'authorization_code', 'client_id' => 'autodonuts-mobile', 'redirect_uri' => $redirect,
+        'grant_type' => 'authorization_code', 'client_id' => $client, 'redirect_uri' => $clientRedirect,
         'code' => $callback['code'] ?? '', 'code_verifier' => $verifier,
     ]])->getBody(), true);
 };
@@ -270,6 +271,82 @@ step('le workbench suit la rotation sans redémarrage', $api('/api/whoami', $rot
 step('un token signé avant la rotation reste accepté', $api('/api/whoami', $access)['status'] === 200);
 $access = $rotated['access_token'];
 
+echo "\nVéhicules\n";
+
+const VIN = 'VF3ABCDEFGH123456';
+const PLATE = 'AB-123-CD';
+
+/** @return array{status: int, json: array<string, mixed>|null, body: string, headers: array<string, list<string>>} */
+$call = function (string $method, string $path, string $token, ?array $json = null) use ($workbench): array {
+    $response = $workbench->request($method, $path, array_filter(['headers' => ['Authorization' => 'Bearer '.$token], 'json' => $json]));
+
+    return ['status' => $response->getStatusCode(), 'json' => json_decode((string) $response->getBody(), true), 'body' => (string) $response->getBody(), 'headers' => $response->getHeaders()];
+};
+/** @return array{status: int, json: array<string, mixed>|null, body: string, headers: array<string, list<string>>} */
+$identity = function (string $method, string $path, string $token, ?array $json = null) use ($plain): array {
+    $response = $plain->request($method, $path, array_filter(['headers' => ['Authorization' => 'Bearer '.$token], 'json' => $json]));
+
+    return ['status' => $response->getStatusCode(), 'json' => json_decode((string) $response->getBody(), true), 'body' => (string) $response->getBody(), 'headers' => $response->getHeaders()];
+};
+
+// AutoTrackly (deuxième produit, avec le scope explicite du groupe sensible) : appel direct à l'API d'Identity.
+$tracklyTokens = $login('autotrackly-mobile', 'autotrackly://oauth/callback', 'profile email autotrackly:access vehicles:read vehicles:write vehicles:sensitive');
+$tracklyIdentity = json_decode((string) $plain->post('/oauth/token', ['form_params' => [
+    'grant_type' => 'urn:ietf:params:oauth:grant-type:token-exchange', 'client_id' => 'autotrackly-mobile',
+    'subject_token' => $tracklyTokens['access_token'], 'audience' => 'identity-api',
+]])->getBody(), true)['access_token'] ?? '';
+step('token identity-api d\'AutoTrackly avec vehicles:sensitive', str_contains((string) (json_decode(base64_decode(strtr(explode('.', $tracklyIdentity)[1] ?? '', '-_', '+/')), true)['scope'] ?? ''), 'vehicles:sensitive'));
+
+$created = $identity('POST', '/api/v1/vehicles', $tracklyIdentity, [
+    'identity' => ['make' => 'Peugeot', 'model' => '205', 'trim' => 'GTI', 'year' => 1991, 'fuel' => 'petrol'],
+    'specs' => ['color' => 'Rouge'], 'usage' => ['mileage_km' => 182000, 'mileage_read_on' => date('Y-m-d')],
+    'sensitive' => ['vin' => 'vf3 abcdefgh-123456', 'plate' => ' ab 123 cd '],
+    'link' => ['groups' => ['identity', 'specs', 'usage', 'sensitive'], 'visibility' => 'private'],
+]);
+$vid = $created['json']['data']['id'] ?? '';
+step('AutoTrackly crée un véhicule (VIN et plaque normalisés), sans jamais les renvoyer', $created['status'] === 201 && $vid !== '' && ! str_contains($created['body'], 'VF3') && ! str_contains($created['body'], 'AB-123'), (string) $created['status']);
+
+$sensitive = $identity('GET', "/api/v1/vehicles/{$vid}?fields=identity,sensitive", $tracklyIdentity);
+step('AutoTrackly lit le VIN sur demande explicite : jamais mis en cache', ($sensitive['json']['data']['sensitive']['vin'] ?? '') === VIN && str_contains($sensitive['headers']['Cache-Control'][0] ?? '', 'no-store'));
+
+$link = $call('PUT', "/api/vehicles/{$vid}/link", $access, ['groups' => ['identity', 'specs', 'usage'], 'visibility' => 'public']);
+step('AutoDonuts (le workbench) lie le même véhicule avec d\'autres groupes', $link['status'] === 200 && ($link['json']['data']['groups'] ?? []) === ['identity', 'specs', 'usage'], (string) $link['status']);
+
+$owner = $call('GET', "/api/vehicles/{$vid}?fields=identity,specs,usage,sensitive", $access);
+step('le propriétaire lit par AutoDonuts : ses groupes, jamais le VIN même demandé', $owner['status'] === 200 && array_keys($owner['json']['data']['groups'] ?? []) === ['identity', 'specs', 'usage'] && ! str_contains($owner['body'], 'VF3'));
+
+$publicRead = $call('GET', "/api/public/vehicles?ids={$vid}&reader=anonymous", $access);
+step('visiteur anonyme (service à service) : identité et specs seulement, pas le kilométrage', array_keys($publicRead['json']['data'][0]['groups'] ?? []) === ['identity', 'specs']);
+
+$call('PUT', "/api/vehicles/{$vid}/link", $access, ['groups' => ['identity', 'specs', 'usage'], 'visibility' => 'public', 'share_usage' => true]);
+$shared = $call('GET', "/api/public/vehicles?ids={$vid}&reader=anonymous", $access);
+step('le propriétaire ouvre le kilométrage : il apparaît, jamais le VIN', array_keys($shared['json']['data'][0]['groups'] ?? []) === ['identity', 'specs', 'usage'] && ! str_contains($shared['body'], 'VF3') && ! str_contains($shared['body'], 'AB-123'));
+
+$version = (int) ($owner['json']['data']['version'] ?? 1);
+$updated = $call('PATCH', "/api/vehicles/{$vid}", $access, ['version' => $version, 'data' => ['specs' => ['color' => 'Bleu']]]);
+step('modification avec la version lue', $updated['status'] === 200 && ($updated['json']['data']['version'] ?? 0) === $version + 1);
+$stale = $call('PATCH', "/api/vehicles/{$vid}", $access, ['version' => $version, 'data' => ['specs' => ['color' => 'Vert']]]);
+step('version périmée : refusée avec la version courante', $stale['status'] === 412 && ($stale['json']['current_version'] ?? 0) === $version + 1, json_encode($stale['json']));
+$decrease = $call('PATCH', "/api/vehicles/{$vid}", $access, ['version' => $version + 1, 'data' => ['usage' => ['mileage_km' => 100]]]);
+step('kilométrage en baisse : refusé sans confirmation', $decrease['status'] === 422 && ($decrease['json']['error'] ?? '') === 'mileage_decrease', json_encode($decrease['json']));
+
+$plaintext = $tinker('echo json_encode(["leak" => collect(["vehicles", "vehicle_access_logs", "audit_logs", "webhook_deliveries"])->contains(fn ($t) => str_contains(json_encode(DB::table($t)->get()), "'.VIN.'") || str_contains(json_encode(DB::table($t)->get()), "'.PLATE.'"))]);');
+step('en base : aucun VIN ni plaque en clair (fiches, journaux, audit, webhooks)', ($plaintext['leak'] ?? true) === false, json_encode($plaintext));
+
+$call('POST', "/api/vehicles/{$vid}/notes", $access, ['note' => 'À vendre en 2027']);
+$notes = fn () => $call('GET', "/api/vehicles/{$vid}/notes", $access)['json']['count'] ?? -1;
+step('donnée locale d\'AutoDonuts rattachée au véhicule', $notes() === 1);
+$deleted = $identity('DELETE', "/api/v1/vehicles/{$vid}", $tracklyIdentity);
+step('AutoTrackly supprime le véhicule pour tous les produits', $deleted['status'] === 204);
+$closed = $waitFor(fn () => $notes() === 0 ? true : null);
+step('webhook vehicle.deleted : AutoDonuts ferme ses données locales', $closed === true);
+
+// Deuxième véhicule, pour l'effacement du compte plus bas.
+$second = $identity('POST', '/api/v1/vehicles', $tracklyIdentity, ['identity' => ['make' => 'Renault', 'model' => '5 Turbo']]);
+$vid2 = $second['json']['data']['id'] ?? '';
+$call('PUT', "/api/vehicles/{$vid2}/link", $access, ['groups' => ['identity'], 'visibility' => 'private']);
+step('un second véhicule, lié à AutoDonuts', $second['status'] === 201 && $vid2 !== '');
+
 echo "\nWebhooks : suspension et réactivation\n";
 
 $suspend = $tinker('$user = App\Modules\Auth\Models\User::query()->findOrFail("'.$sub.'"); $actor = App\Modules\Auth\Models\User::factory()->create(); app(App\Modules\Auth\Actions\SuspendUser::class)->handle($user, $actor, "smoke connecteur"); echo json_encode(["actor" => $actor->id]);');
@@ -331,6 +408,9 @@ $run([PHP_BINARY, 'artisan', 'identity:accounts:process-deletions'], $identityDi
 $gone = $tinker('echo json_encode(["user" => App\Modules\Auth\Models\User::query()->whereKey("'.$sub.'")->exists(), "org" => App\Modules\Organizations\Models\Organization::query()->where("slug", "'.$orgSlug.'")->exists(), "proof" => App\Modules\Auth\Models\AccountDeletion::query()->where("user_id", "'.$sub.'")->where("status", "completed")->exists()]);');
 step('tous les accusés reçus : compte et organisation à membre unique effacés, preuve conservée', $gone === ['user' => false, 'org' => false, 'proof' => true], json_encode($gone));
 step('statut : le compte n\'existe plus', ($api('/api/status/'.$sub, $access)['json']['exists'] ?? true) === false);
+$signIn();
+$vehicleGone = $tinker('echo json_encode(["vehicle" => App\\Modules\\Vehicles\\Models\\Vehicle::query()->whereKey("'.$vid2.'")->exists(), "webhook" => App\\Webhooks\\Models\\WebhookDelivery::query()->where("event_type", "vehicle.deleted")->where("payload", "like", "%'.$vid2.'%")->where("status", "delivered")->exists()]);');
+step('les véhicules du compte sont effacés avec lui, et AutoDonuts en est prévenu', $vehicleGone === ['vehicle' => false, 'webhook' => true], json_encode($vehicleGone));
 $signIn();
 step('la connexion avec l\'ancienne adresse ne mène plus à aucun compte', str_contains($http->get('/account/profile')->getHeaderLine('Location'), '/login'));
 
