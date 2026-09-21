@@ -8,6 +8,7 @@ use AutoGteck\IdentityConnector\Events\AccountDeletionRequested;
 use AutoGteck\IdentityConnector\Events\AccountReinstated;
 use AutoGteck\IdentityConnector\Events\AccountSuspended;
 use AutoGteck\IdentityConnector\Events\OrganizationDeleted;
+use AutoGteck\IdentityConnector\Events\OrganizationOwnerJoined;
 use AutoGteck\IdentityConnector\Events\VehicleDeleted;
 use AutoGteck\IdentityConnector\Events\VehicleUnlinked;
 use Carbon\CarbonImmutable;
@@ -27,7 +28,7 @@ class IdentityWebhookController
 
     private const TYPES = [
         'account.suspended', 'account.reinstated', 'account.deletion_requested',
-        'account.deletion_cancelled', 'account.deletion_due', 'organization.deleted', 'vehicle.deleted', 'vehicle.unlinked',
+        'account.deletion_cancelled', 'account.deletion_due', 'organization.deleted', 'organization.owner_joined', 'vehicle.deleted', 'vehicle.unlinked',
     ];
 
     public function __construct(private readonly Cache $cache) {}
@@ -56,9 +57,9 @@ class IdentityWebhookController
             return response()->json(['status' => 'ignored'], 202);
         }
 
-        // Un événement d'organisation porte `organization_id`, un événement de véhicule `vehicle_id`, les autres `user_id`.
+        // Un événement d'organisation porte `organization_id` (et `user_id`, `reference` pour l'arrivée d'un propriétaire), un événement de véhicule `vehicle_id`, les autres `user_id`.
         $subject = $envelope['data'][match ($envelope['type']) {
-            'organization.deleted' => 'organization_id',
+            'organization.deleted', 'organization.owner_joined' => 'organization_id',
             'vehicle.deleted', 'vehicle.unlinked' => 'vehicle_id',
             default => 'user_id',
         }] ?? null;
@@ -70,6 +71,13 @@ class IdentityWebhookController
         }
 
         if (! is_string($subject) || $subject === '' || strlen($subject) > 64) {
+            return response()->json(['error' => 'invalid_event'], 400);
+        }
+
+        $ownerId = $envelope['data']['user_id'] ?? null;
+        $reference = $envelope['data']['reference'] ?? null;
+
+        if ($envelope['type'] === 'organization.owner_joined' && (! is_string($ownerId) || $ownerId === '' || strlen($ownerId) > 64 || ! is_string($reference) || $reference === '' || strlen($reference) > 100)) {
             return response()->json(['error' => 'invalid_event'], 400);
         }
 
@@ -94,6 +102,7 @@ class IdentityWebhookController
                 'account.deletion_cancelled' => new AccountDeletionCancelled($subject, $envelope['id'], $occurredAt),
                 'account.deletion_due' => new AccountDeletionDue($subject, $envelope['id'], $occurredAt),
                 'organization.deleted' => new OrganizationDeleted($subject, $envelope['id'], $occurredAt),
+                'organization.owner_joined' => new OrganizationOwnerJoined($subject, (string) $ownerId, (string) $reference, $envelope['id'], $occurredAt),
                 'vehicle.deleted' => new VehicleDeleted($subject, $envelope['id'], $occurredAt),
                 'vehicle.unlinked' => new VehicleUnlinked($subject, (string) $product, $envelope['id'], $occurredAt),
             };

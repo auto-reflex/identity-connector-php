@@ -41,6 +41,9 @@ final class FakeIdentity
     /** @var list<string> comptes dont le produit a accusé l'effacement */
     private array $acknowledged = [];
 
+    /** @var array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int}> organisations provisionnées, par référence */
+    private array $provisioned = [];
+
     private FakeVehicles $vehicleStore;
 
     private int $exchangeCalls = 0;
@@ -255,7 +258,7 @@ final class FakeIdentity
      *     ['body' => $body, 'server' => $server] = $identity->webhook('account.suspended', $userId);
      *     $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertNoContent();
      *
-     * `$subjectId` est l'identifiant du compte, de l'organisation pour `organization.deleted`, du véhicule pour `vehicle.*`. `account.deletion_requested`
+     * `$subjectId` est l'identifiant du compte, de l'organisation pour `organization.deleted` et `organization.owner_joined`, du véhicule pour `vehicle.*`. `account.deletion_requested`
      * porte en plus `scheduled_for` ; `$data` remplace le contenu si besoin.
      *
      * @param  array<string, string>|null  $data
@@ -265,6 +268,7 @@ final class FakeIdentity
     {
         $data ??= match ($type) {
             'organization.deleted' => ['organization_id' => $subjectId],
+            'organization.owner_joined' => ['organization_id' => $subjectId, 'user_id' => 'owner-of-'.$subjectId, 'reference' => 'ref-'.$subjectId],
             'vehicle.deleted' => ['vehicle_id' => $subjectId],
             'vehicle.unlinked' => ['vehicle_id' => $subjectId, 'product' => str_replace('-api', '', $this->audience)],
             'account.deletion_requested' => ['user_id' => $subjectId, 'scheduled_for' => Carbon::now('UTC')->addDays(30)->toIso8601String()],
@@ -331,7 +335,7 @@ final class FakeIdentity
 
             $scopes = array_values(array_filter(explode(' ', (string) ($data['scope'] ?? ''))));
 
-            if ($scopes === [] || array_diff($scopes, ['vehicles:read', 'accounts:status', 'accounts:deletion']) !== []) {
+            if ($scopes === [] || array_diff($scopes, ['vehicles:read', 'accounts:status', 'accounts:deletion', 'organizations:provision']) !== []) {
                 return Http::response(['error' => 'invalid_scope'], 400);
             }
 
@@ -396,6 +400,14 @@ final class FakeIdentity
             return $id === null ? $this->organizationList($person) : $this->organizationDetail($person, rawurldecode($id));
         }
 
+        if ($path === '/api/v1/provisioning/organizations' || str_starts_with($path, '/api/v1/provisioning/organizations/')) {
+            if (! $isService || ! in_array('organizations:provision', $scopes, true)) {
+                return Http::response(['error' => $isService ? 'insufficient_scope' : 'forbidden'], 403);
+            }
+
+            return $this->provisioning($request, $path);
+        }
+
         if (preg_match('#^/api/v1/accounts/([^/]+)/deletion/ack$#', $path, $matches) === 1) {
             if (! $isService || ! in_array('accounts:deletion', $scopes, true)) {
                 return Http::response(['error' => $isService ? 'insufficient_scope' : 'forbidden'], 403);
@@ -429,6 +441,92 @@ final class FakeIdentity
         }
 
         return Http::response(['error' => 'not_found'], 404);
+    }
+
+    /**
+     * Ce que le produit a provisionné auprès du faux Identity : `référence => [organization_id, email, name, locale, owner, sent]`
+     * (`sent` = nombre d'invitations envoyées).
+     *
+     * @return array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int}>
+     */
+    public function provisioned(): array
+    {
+        return $this->provisioned;
+    }
+
+    /**
+     * Simule l'acceptation de l'invitation : `$userId` devient propriétaire de l'organisation provisionnée sous `$reference`. Renvoie le webhook
+     * `organization.owner_joined` correspondant, signé, à poster sur la route du connecteur.
+     *
+     * @return array{body: string, server: array<string, string>}
+     */
+    public function ownerJoins(string $reference, string $userId, ?string $eventId = null): array
+    {
+        $entry = $this->provisioned[$reference] ?? throw new \LogicException("No organization was provisioned under the reference {$reference}.");
+
+        $this->provisioned[$reference]['owner'] = $userId;
+        $this->organizations[$entry['organization_id']] = [
+            'name' => $entry['name'],
+            'slug' => $entry['slug'],
+            'created_at' => Carbon::now()->toIso8601String(),
+            'members' => [$userId => 'owner'],
+        ];
+
+        return $this->webhook('organization.owner_joined', $entry['organization_id'], $eventId, data: [
+            'organization_id' => $entry['organization_id'],
+            'user_id' => $userId,
+            'reference' => $reference,
+        ]);
+    }
+
+    /**
+     * @return PromiseInterface
+     */
+    private function provisioning(Request $request, string $path)
+    {
+        $state = fn (array $entry) => match (true) {
+            $entry['owner'] !== null => 'active',
+            default => 'pending',
+        };
+        $resource = fn (string $reference, array $entry) => ['data' => [
+            'organization_id' => $entry['organization_id'],
+            'slug' => $entry['slug'],
+            'reference' => $reference,
+            'state' => $state($entry),
+            'owner_user_id' => $entry['owner'],
+        ]];
+
+        if ($request->method() === 'GET') {
+            $reference = rawurldecode(substr($path, strlen('/api/v1/provisioning/organizations/')));
+
+            return isset($this->provisioned[$reference]) ? Http::response($resource($reference, $this->provisioned[$reference])) : Http::response(['message' => 'Not Found'], 404);
+        }
+
+        $data = $request->data();
+        $errors = array_filter([
+            'reference' => is_string($data['reference'] ?? null) && $data['reference'] !== '' ? null : ['required'],
+            'email' => is_string($data['email'] ?? null) && filter_var($data['email'], FILTER_VALIDATE_EMAIL) ? null : ['invalid'],
+            'organization_name' => is_string($data['organization_name'] ?? null) && mb_strlen($data['organization_name']) >= 2 ? null : ['invalid'],
+        ]);
+
+        if ($errors !== []) {
+            return Http::response(['message' => 'The given data was invalid.', 'errors' => $errors], 422);
+        }
+
+        $reference = $data['reference'];
+        $existing = $this->provisioned[$reference] ?? null;
+
+        $this->provisioned[$reference] = [
+            'organization_id' => $existing['organization_id'] ?? (string) Str::ulid(),
+            'slug' => $existing['slug'] ?? Str::slug($data['organization_name']),
+            'email' => mb_strtolower($data['email']),
+            'name' => $existing['name'] ?? $data['organization_name'],
+            'locale' => $data['locale'] ?? null,
+            'owner' => $existing['owner'] ?? null,
+            'sent' => ($existing['sent'] ?? 0) + (($existing['owner'] ?? null) === null ? 1 : 0),
+        ];
+
+        return Http::response($resource($reference, $this->provisioned[$reference]));
     }
 
     /**

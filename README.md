@@ -139,8 +139,29 @@ Event::listen(AutoGteck\IdentityConnector\Events\AccountSuspended::class, functi
 ```
 
 Événements relayés : `AccountSuspended`, `AccountReinstated`, `AccountDeletionRequested`, `AccountDeletionCancelled`,
-`AccountDeletionDue` et `OrganizationDeleted` ; un type ou une version inconnus reçoivent 202 et sont ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
+`AccountDeletionDue`, `OrganizationDeleted` et `OrganizationOwnerJoined` (AR-070) ; un type ou une version inconnus reçoivent 202 et sont ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
 Une suspension locale du produit ne doit pas être levée par `AccountReinstated` (voir `workbench/app/Listeners`).
+
+## Provisionner l'organisation d'un professionnel (AR-070)
+
+Quand un produit valide lui-même une demande (la Map : l'équipe approuve une demande de référencement), il crée le compte et
+l'organisation **à la validation**, sans échanger de mot de passe. Service à service, scope `organizations:provision` :
+
+```php
+$organization = Identity::client()->provisionOrganization(
+    reference: (string) $demande->id,          // votre identifiant : rappeler avec la même référence ne crée rien de plus
+    ownerEmail: $demande->email,
+    organizationName: $demande->company_name,
+    locale: 'fr',
+);
+$organization->state; // pending : invitation envoyée ; rappeler renvoie un nouveau lien (adresse corrigée, lien perdu)
+Identity::client()->provisionedOrganization($reference); // état : pending | expired | active, ownerUserId ; null si inconnue
+```
+
+L'organisation existe tout de suite, sans membre. La personne devient propriétaire en acceptant l'invitation d'Identity (email
+vérifié identique, AR-050). Vous en êtes prévenu par l'événement `OrganizationOwnerJoined` (`organizationId`, `userId`,
+`reference`) : reliez alors votre donnée locale (`identity_organization_id`, propriétaire) et activez-la. En test :
+`$identity->provisioned()` et `$identity->ownerJoins($reference, $userId)` (renvoie le webhook signé).
 
 ## Véhicules (AR-057 à AR-059)
 
@@ -203,7 +224,7 @@ it('renvoie mon profil', function () {
 ```
 
 `FakeIdentity` simule le JWKS, `/userinfo`, l'échange de token, le token de service, l'API organisations et le statut
-de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), les véhicules (`vehicles()->add(...)`, mêmes groupes, visibilité et contrôle
+de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), le provisionnement d'organisations (`provisioned()`, `ownerJoins()`), les véhicules (`vehicles()->add(...)`, mêmes groupes, visibilité et contrôle
 de version que le vrai service, **sans validation des champs**), et permet de simuler une panne (`goDown()`),
 une révocation, une rotation de clé et un webhook signé (`webhook()`), avec les mêmes formes et les mêmes refus que le vrai service.
 

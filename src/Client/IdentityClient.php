@@ -144,6 +144,55 @@ class IdentityClient
     }
 
     /**
+     * Crée l'organisation d'un professionnel et invite son futur propriétaire (`POST /api/v1/provisioning/organizations`, scope
+     * `organizations:provision`, AR-070). `$reference` est l'identifiant de la demande chez ce produit : rappeler avec la même
+     * référence ne crée rien de plus, renvoie un nouveau lien tant que le propriétaire n'a pas rejoint (adresse corrigée, lien
+     * perdu ou expiré) et renvoie l'état `active` ensuite.
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected dont 422 si les données sont invalides (`$rejected->body['errors']`)
+     */
+    public function provisionOrganization(string $reference, string $ownerEmail, string $organizationName, ?string $locale = null): ProvisionedOrganization
+    {
+        // Idempotent par référence : une reprise sur panne réseau est sans risque.
+        $data = $this->serviceRequest('POST', 'organizations:provision', '/api/v1/provisioning/organizations', [
+            'json' => array_filter([
+                'reference' => $reference,
+                'email' => $ownerEmail,
+                'organization_name' => $organizationName,
+                'locale' => $locale,
+            ], fn ($value) => $value !== null),
+        ], retry: true)->json('data');
+
+        if (! is_array($data) || ! isset($data['organization_id'], $data['slug'], $data['reference'], $data['state'])) {
+            throw new IdentityUnavailable('Identity returned an unusable provisioning response.');
+        }
+
+        return ProvisionedOrganization::fromArray($data);
+    }
+
+    /**
+     * État d'une organisation provisionnée par ce produit ; `null` si la référence est inconnue.
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function provisionedOrganization(string $reference): ?ProvisionedOrganization
+    {
+        try {
+            $data = $this->serviceRequest('GET', 'organizations:provision', '/api/v1/provisioning/organizations/'.rawurlencode($reference))->json('data');
+        } catch (IdentityRejected $rejected) {
+            if ($rejected->status === 404) {
+                return null;
+            }
+
+            throw $rejected;
+        }
+
+        return is_array($data) && isset($data['organization_id'], $data['slug'], $data['reference'], $data['state']) ? ProvisionedOrganization::fromArray($data) : null;
+    }
+
+    /**
      * Token `identity-api` d'une personne, par échange RFC 8693 depuis son token produit (AR-047).
      *
      * @throws IdentityUnavailable
