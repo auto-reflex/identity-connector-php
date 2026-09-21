@@ -144,27 +144,39 @@ class IdentityClient
     }
 
     /**
-     * Crée l'organisation d'un professionnel et invite son futur propriétaire (`POST /api/v1/provisioning/organizations`, scope
-     * `organizations:provision`, AR-070). `$reference` est l'identifiant de la demande chez ce produit : rappeler avec la même
-     * référence ne crée rien de plus, renvoie un nouveau lien tant que le propriétaire n'a pas rejoint (adresse corrigée, lien
-     * perdu ou expiré) et renvoie l'état `active` ensuite.
+     * Crée l'organisation d'un professionnel (`POST /api/v1/provisioning/organizations`, scope `organizations:provision`, AR-070).
+     * `$reference` est l'identifiant de la demande chez ce produit : rappeler avec la même référence ne crée rien de plus.
+     *
+     * Le propriétaire se nomme de **l'une** des deux façons (jamais les deux, jamais aucune : `InvalidArgumentException`) :
+     *  - `$ownerUserId` (AR-076) : un compte que ce produit connaît déjà, dont l'email est vérifié. Il devient `owner` tout de suite,
+     *    sans invitation ni email : l'état est `active` et aucun événement `OrganizationOwnerJoined` n'est émis (la réponse suffit) ;
+     *  - `$ownerEmail` (AR-070) : Identity invite cette adresse ; état `pending`, puis `OrganizationOwnerJoined` à l'acceptation.
+     *    Rappeler renvoie un nouveau lien tant que le propriétaire n'a pas rejoint.
+     * Rappeler avec `$ownerUserId` une organisation encore `pending` lui donne la propriété et révoque l'invitation.
      *
      * `$legalSiret` est obligatoire (AR-075) : Identity le vérifie auprès de Sirene (établissement existant et actif) avant de créer
      * quoi que ce soit ; rappeler avec la même référence ne relance pas la vérification.
      *
+     * @throws \InvalidArgumentException si `$ownerEmail` et `$ownerUserId` sont tous deux absents ou tous deux donnés
      * @throws RegistryUnavailable Sirene ne répond pas : rien n'a été créé, réessayer plus tard
      * @throws IdentityUnavailable
      * @throws LegalIdentityRejected SIRET refusé (`->error` : `siret_invalid`, `siret_not_found`, `siret_inactive`, `siret_taken`) : erreur de formulaire
+     * @throws ProvisioningRejected `owner_unknown` (compte inconnu ou email non vérifié) ou `reference_conflict` (référence d'un autre propriétaire)
      * @throws IdentityRejected dont 422 si les autres données sont invalides (`$rejected->body['errors']`)
      */
-    public function provisionOrganization(string $reference, string $ownerEmail, string $organizationName, string $legalSiret, ?string $locale = null): ProvisionedOrganization
+    public function provisionOrganization(string $reference, string $organizationName, string $legalSiret, ?string $ownerEmail = null, ?string $ownerUserId = null, ?string $locale = null): ProvisionedOrganization
     {
+        if (($ownerEmail === null) === ($ownerUserId === null)) {
+            throw new \InvalidArgumentException('Give the owner as either an email (invitation) or an Identity account (ownerUserId), not both and not none.');
+        }
+
         try {
             // Idempotent par référence : une reprise sur panne réseau est sans risque.
             $data = $this->serviceRequest('POST', 'organizations:provision', '/api/v1/provisioning/organizations', [
                 'json' => array_filter([
                     'reference' => $reference,
                     'email' => $ownerEmail,
+                    'owner_user_id' => $ownerUserId,
                     'organization_name' => $organizationName,
                     'legal' => ['siret' => $legalSiret],
                     'locale' => $locale,
@@ -173,6 +185,10 @@ class IdentityClient
         } catch (IdentityRejected $rejected) {
             if (in_array($rejected->error, LegalIdentityRejected::CODES, true)) {
                 throw new LegalIdentityRejected($rejected->status, $rejected->getMessage(), $rejected->error, $rejected->body);
+            }
+
+            if (in_array($rejected->error, ProvisioningRejected::CODES, true)) {
+                throw new ProvisioningRejected($rejected->status, $rejected->getMessage(), $rejected->error, $rejected->body);
             }
 
             throw $rejected;

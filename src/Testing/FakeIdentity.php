@@ -46,7 +46,7 @@ final class FakeIdentity
     /** @var list<string> comptes dont le produit a accusé l'effacement */
     private array $acknowledged = [];
 
-    /** @var array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int, legal: array<string, mixed>}> organisations provisionnées, par référence */
+    /** @var array<string, array{organization_id: string, slug: string, email: string|null, name: string, locale: string|null, owner: string|null, sent: int, legal: array<string, mixed>}> organisations provisionnées, par référence */
     private array $provisioned = [];
 
     private FakeVehicles $vehicleStore;
@@ -543,7 +543,7 @@ final class FakeIdentity
      * Ce que le produit a provisionné auprès du faux Identity : `référence => [organization_id, email, name, locale, owner, sent]`
      * (`sent` = nombre d'invitations envoyées).
      *
-     * @return array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int, legal: array<string, mixed>}>
+     * @return array<string, array{organization_id: string, slug: string, email: string|null, name: string, locale: string|null, owner: string|null, sent: int, legal: array<string, mixed>}>
      */
     public function provisioned(): array
     {
@@ -604,7 +604,12 @@ final class FakeIdentity
         $data = $request->data();
         $errors = array_filter([
             'reference' => is_string($data['reference'] ?? null) && $data['reference'] !== '' ? null : ['required'],
-            'email' => is_string($data['email'] ?? null) && filter_var($data['email'], FILTER_VALIDATE_EMAIL) ? null : ['invalid'],
+            'email' => match (true) {
+                isset($data['email'], $data['owner_user_id']) => ['prohibited'],
+                isset($data['email']) => is_string($data['email']) && filter_var($data['email'], FILTER_VALIDATE_EMAIL) ? null : ['invalid'],
+                isset($data['owner_user_id']) => null,
+                default => ['required'],
+            },
             'organization_name' => is_string($data['organization_name'] ?? null) && mb_strlen($data['organization_name']) >= 2 ? null : ['invalid'],
             'legal.siret' => is_string($data['legal']['siret'] ?? null) && $data['legal']['siret'] !== '' ? null : ['required'],
         ]);
@@ -616,6 +621,17 @@ final class FakeIdentity
         $reference = $data['reference'];
         $existing = $this->provisioned[$reference] ?? null;
         $legal = $existing['legal'] ?? null;
+        $ownerId = isset($data['owner_user_id']) ? (string) $data['owner_user_id'] : null;
+
+        if ($ownerId !== null) {
+            if (! ($this->users[$ownerId]['verified'] ?? false)) {
+                return Http::response(['error' => 'owner_unknown', 'message' => 'The owner account is unknown or its email is not verified.'], 422);
+            }
+
+            if (($existing['owner'] ?? null) !== null && $existing['owner'] !== $ownerId) {
+                return Http::response(['error' => 'reference_conflict', 'message' => 'This reference belongs to another owner.'], 409);
+            }
+        }
 
         if ($existing === null) {
             $refused = $this->legalRefusal((string) ($data['legal']['siret'] ?? ''));
@@ -630,13 +646,25 @@ final class FakeIdentity
         $this->provisioned[$reference] = [
             'organization_id' => $existing['organization_id'] ?? (string) Str::ulid(),
             'slug' => $existing['slug'] ?? Str::slug($data['organization_name']),
-            'email' => mb_strtolower($data['email']),
+            'email' => isset($data['email']) ? mb_strtolower($data['email']) : ($existing['email'] ?? null),
             'name' => $existing['name'] ?? $data['organization_name'],
             'locale' => $data['locale'] ?? null,
-            'owner' => $existing['owner'] ?? null,
-            'sent' => ($existing['sent'] ?? 0) + (($existing['owner'] ?? null) === null ? 1 : 0),
+            'owner' => $existing['owner'] ?? $ownerId,
+            'sent' => ($existing['sent'] ?? 0) + (($existing['owner'] ?? null) === null && $ownerId === null ? 1 : 0),
             'legal' => $legal,
         ];
+
+        if ($ownerId !== null) {
+            // Propriétaire immédiat : la personne lit tout de suite l'organisation, sans événement `owner_joined`.
+            $this->organizations[$this->provisioned[$reference]['organization_id']] = [
+                'name' => $this->provisioned[$reference]['name'],
+                'slug' => $this->provisioned[$reference]['slug'],
+                'created_at' => Carbon::now()->toIso8601String(),
+                'members' => [$ownerId => 'owner'],
+                'kind' => 'professional',
+                'legal' => $legal,
+            ];
+        }
 
         return Http::response($resource($reference, $this->provisioned[$reference]));
     }

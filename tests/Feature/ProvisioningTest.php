@@ -5,6 +5,7 @@ use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
 use AutoGteck\IdentityConnector\Client\LegalIdentity;
 use AutoGteck\IdentityConnector\Client\LegalIdentityRejected;
 use AutoGteck\IdentityConnector\Client\ProvisionedOrganization;
+use AutoGteck\IdentityConnector\Client\ProvisioningRejected;
 use AutoGteck\IdentityConnector\Client\RegistryUnavailable;
 use AutoGteck\IdentityConnector\Events\OrganizationOwnerJoined;
 use AutoGteck\IdentityConnector\Events\OrganizationUpdated;
@@ -28,7 +29,7 @@ beforeEach(function () {
 afterEach(fn () => Carbon::setTestNow());
 
 it('provisions an organization and reports it as pending until the owner joins', function () {
-    $organization = Identity::client()->provisionOrganization('pro-1', 'Camille@Example.test', 'Débosselage Durand', PROV_SIRET, 'fr');
+    $organization = Identity::client()->provisionOrganization('pro-1', 'Débosselage Durand', PROV_SIRET, ownerEmail: 'Camille@Example.test', locale: 'fr');
 
     expect($organization)->toBeInstanceOf(ProvisionedOrganization::class)
         ->and($organization->reference)->toBe('pro-1')
@@ -39,8 +40,8 @@ it('provisions an organization and reports it as pending until the owner joins',
 });
 
 it('re-sends the invitation when called again, without creating a second organization', function () {
-    $first = Identity::client()->provisionOrganization('pro-1', 'a@example.test', 'Durand', PROV_SIRET);
-    $second = Identity::client()->provisionOrganization('pro-1', 'b@example.test', 'Durand', PROV_SIRET);
+    $first = Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'a@example.test');
+    $second = Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'b@example.test');
 
     expect($second->organizationId)->toBe($first->organizationId)
         ->and($this->identity->provisioned())->toHaveCount(1)
@@ -49,7 +50,7 @@ it('re-sends the invitation when called again, without creating a second organiz
 
 it('relays the arrival of the owner as an event, and the organization becomes readable as active', function () {
     Event::fake([OrganizationOwnerJoined::class]);
-    Identity::client()->provisionOrganization('pro-1', 'camille@example.test', 'Durand', PROV_SIRET);
+    Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'camille@example.test');
 
     $webhook = $this->identity->ownerJoins('pro-1', PROV_OWNER, '01J0EVENT0000000000000000A');
     $this->call('POST', '/identity/webhooks', [], [], [], $webhook['server'], $webhook['body'])->assertNoContent();
@@ -68,7 +69,7 @@ it('answers null for a reference it does not know', function () {
 
 it('surfaces validation errors as a typed rejection', function () {
     try {
-        Identity::client()->provisionOrganization('pro-1', 'not-an-email', 'D', PROV_SIRET);
+        Identity::client()->provisionOrganization('pro-1', 'D', PROV_SIRET, ownerEmail: 'not-an-email');
         $this->fail('A rejection was expected.');
     } catch (IdentityRejected $rejected) {
         expect($rejected->status)->toBe(422)->and($rejected->body['errors'])->toHaveKeys(['email', 'organization_name']);
@@ -84,7 +85,7 @@ it('refuses an owner event without user or reference', function () {
 
 describe('legal identity (AR-075)', function () {
     it('sends the SIRET and exposes the verified legal identity of the organization', function () {
-        $organization = Identity::client()->provisionOrganization('pro-1', 'camille@example.test', 'Débosselage Durand', '356 000 000 00048');
+        $organization = Identity::client()->provisionOrganization('pro-1', 'Débosselage Durand', '356 000 000 00048', ownerEmail: 'camille@example.test');
 
         expect($organization->legal)->toBeInstanceOf(LegalIdentity::class)
             ->and($organization->legal->siret)->toBe(PROV_SIRET)
@@ -97,10 +98,10 @@ describe('legal identity (AR-075)', function () {
     });
 
     it('does not verify the SIRET again when the call is replayed', function () {
-        Identity::client()->provisionOrganization('pro-1', 'a@example.test', 'Durand', PROV_SIRET);
+        Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'a@example.test');
         $this->identity->registryUnavailable();
 
-        expect(Identity::client()->provisionOrganization('pro-1', 'b@example.test', 'Durand', PROV_SIRET)->legal->siret)->toBe(PROV_SIRET);
+        expect(Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'b@example.test')->legal->siret)->toBe(PROV_SIRET);
     });
 
     it('turns a refused SIRET into a typed form error, not an outage', function (string $code, int $status) {
@@ -113,7 +114,7 @@ describe('legal identity (AR-075)', function () {
         };
 
         try {
-            Identity::client()->provisionOrganization('pro-1', 'camille@example.test', 'Durand', $siret);
+            Identity::client()->provisionOrganization('pro-1', 'Durand', $siret, ownerEmail: 'camille@example.test');
             $this->fail('A rejection was expected.');
         } catch (LegalIdentityRejected $rejected) {
             expect($rejected)->toBeInstanceOf(IdentityRejected::class)->and($rejected->error)->toBe($code)->and($rejected->status)->toBe($status);
@@ -126,7 +127,7 @@ describe('legal identity (AR-075)', function () {
         $this->identity->registryUnavailable();
 
         try {
-            Identity::client()->provisionOrganization('pro-1', 'camille@example.test', 'Durand', PROV_SIRET);
+            Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'camille@example.test');
             $this->fail('An outage was expected.');
         } catch (RegistryUnavailable $unavailable) {
             expect($unavailable)->toBeInstanceOf(IdentityUnavailable::class);
@@ -151,4 +152,66 @@ describe('legal identity (AR-075)', function () {
 
         $this->call('POST', '/identity/webhooks', [], [], [], $webhook['server'], $webhook['body'])->assertStatus(400);
     })->with(['missing' => [null], 'string' => ['legal'], 'object' => [['a' => 'legal']], 'number' => [[1]]]);
+});
+
+describe('immediate owner (AR-076)', function () {
+    beforeEach(function () {
+        $this->identity->user(PROV_OWNER, emailVerified: true)->user('01J0USER00000000000000000B', 'Autre', 'autre@example.test')->user('01J0USER00000000000000000C', 'Non vérifié', 'nv@example.test', emailVerified: false);
+    });
+
+    it('makes the account the owner at once: active, no invitation, and the person reads the organization', function () {
+        $organization = Identity::client()->provisionOrganization('pro-1', 'Débosselage Durand', PROV_SIRET, ownerUserId: PROV_OWNER);
+
+        expect($organization->state)->toBe(ProvisionedOrganization::ACTIVE)
+            ->and($organization->isActive())->toBeTrue()
+            ->and($organization->ownerUserId)->toBe(PROV_OWNER)
+            ->and($organization->legal->siret)->toBe(PROV_SIRET)
+            ->and($this->identity->provisioned()['pro-1'])->toMatchArray(['owner' => PROV_OWNER, 'sent' => 0, 'email' => null]);
+
+        expect(Identity::client()->provisionedOrganization('pro-1')->isActive())->toBeTrue();
+    });
+
+    it('is idempotent for the same owner and refuses another one', function () {
+        $first = Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerUserId: PROV_OWNER);
+        $again = Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerUserId: PROV_OWNER);
+
+        expect($again->organizationId)->toBe($first->organizationId)->and($this->identity->provisioned())->toHaveCount(1);
+
+        try {
+            Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerUserId: '01J0USER00000000000000000B');
+            $this->fail('A conflict was expected.');
+        } catch (ProvisioningRejected $rejected) {
+            expect($rejected)->toBeInstanceOf(IdentityRejected::class)->and($rejected->error)->toBe('reference_conflict')->and($rejected->status)->toBe(409);
+        }
+    });
+
+    it('refuses an unknown account or one whose email is not verified, as a typed rejection', function (string $userId) {
+        try {
+            Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerUserId: $userId);
+            $this->fail('A rejection was expected.');
+        } catch (ProvisioningRejected $rejected) {
+            expect($rejected->error)->toBe('owner_unknown')->and($rejected->status)->toBe(422);
+        }
+
+        expect($this->identity->provisioned())->toBe([]);
+    })->with(['01J0NOBODY000000000000000Z', '01J0USER00000000000000000C']);
+
+    it('applies the SIRET rules too', function () {
+        $this->identity->siretTaken('80000000000011');
+
+        expect(fn () => Identity::client()->provisionOrganization('pro-1', 'Durand', '80000000000011', ownerUserId: PROV_OWNER))->toThrow(LegalIdentityRejected::class);
+    });
+
+    it('gives a pending organization to the account when replayed with it', function () {
+        Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: 'camille@example.test');
+
+        $organization = Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerUserId: PROV_OWNER);
+
+        expect($organization->isActive())->toBeTrue()->and($organization->ownerUserId)->toBe(PROV_OWNER);
+    });
+
+    it('wants exactly one owner', function (?string $email, ?string $userId) {
+        expect(fn () => Identity::client()->provisionOrganization('pro-1', 'Durand', PROV_SIRET, ownerEmail: $email, ownerUserId: $userId))->toThrow(InvalidArgumentException::class);
+        expect($this->identity->provisioned())->toBe([]);
+    })->with([[null, null], ['a@example.test', PROV_OWNER]]);
 });

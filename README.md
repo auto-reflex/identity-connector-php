@@ -197,16 +197,19 @@ l'organisation **à la validation**, sans échanger de mot de passe. Service à 
 ```php
 $organization = Identity::client()->provisionOrganization(
     reference: (string) $demande->id,          // votre identifiant : rappeler avec la même référence ne crée rien de plus
-    ownerEmail: $demande->email,
     organizationName: $demande->company_name,
     legalSiret: $demande->siret,               // obligatoire (AR-075) : Identity le vérifie auprès de Sirene
+    ownerUserId: $identityUserId,              // le compte connecté (AR-076) : propriétaire tout de suite, état `active`, aucun email
+    // ownerEmail: $demande->email,            // OU une invitation (AR-070), à la place de ownerUserId : jamais les deux
     locale: 'fr',
 );
-$organization->state; // pending : invitation envoyée ; rappeler renvoie un nouveau lien (adresse corrigée, lien perdu)
+$organization->state; // active (ownerUserId) ; pending (ownerEmail) : invitation envoyée, rappeler renvoie un nouveau lien
 Identity::client()->provisionedOrganization($reference); // état : pending | expired | active, ownerUserId ; null si inconnue
 ```
 
-L'organisation existe tout de suite, sans membre. La personne devient propriétaire en acceptant l'invitation d'Identity (email
+**Avec `ownerUserId`** (AR-076) : le compte doit exister et avoir un email vérifié, sinon `ProvisioningRejected` (`->error` : `owner_unknown` ; `reference_conflict` si la référence
+appartient à un autre propriétaire) ; la personne est propriétaire tout de suite et **aucun `OrganizationOwnerJoined` n'est émis**. **Avec `ownerEmail`**, l'organisation existe
+tout de suite, sans membre. La personne devient propriétaire en acceptant l'invitation d'Identity (email
 vérifié identique, AR-050). Vous en êtes prévenu par l'événement `OrganizationOwnerJoined` (`organizationId`, `userId`,
 `reference`) : reliez alors votre donnée locale (`identity_organization_id`, propriétaire) et activez-la. En test :
 `$identity->provisioned()` et `$identity->ownerJoins($reference, $userId)` (renvoie le webhook signé).
