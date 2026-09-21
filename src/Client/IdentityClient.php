@@ -149,20 +149,34 @@ class IdentityClient
      * référence ne crée rien de plus, renvoie un nouveau lien tant que le propriétaire n'a pas rejoint (adresse corrigée, lien
      * perdu ou expiré) et renvoie l'état `active` ensuite.
      *
+     * `$legalSiret` est obligatoire (AR-075) : Identity le vérifie auprès de Sirene (établissement existant et actif) avant de créer
+     * quoi que ce soit ; rappeler avec la même référence ne relance pas la vérification.
+     *
+     * @throws RegistryUnavailable Sirene ne répond pas : rien n'a été créé, réessayer plus tard
      * @throws IdentityUnavailable
-     * @throws IdentityRejected dont 422 si les données sont invalides (`$rejected->body['errors']`)
+     * @throws LegalIdentityRejected SIRET refusé (`->error` : `siret_invalid`, `siret_not_found`, `siret_inactive`, `siret_taken`) : erreur de formulaire
+     * @throws IdentityRejected dont 422 si les autres données sont invalides (`$rejected->body['errors']`)
      */
-    public function provisionOrganization(string $reference, string $ownerEmail, string $organizationName, ?string $locale = null): ProvisionedOrganization
+    public function provisionOrganization(string $reference, string $ownerEmail, string $organizationName, string $legalSiret, ?string $locale = null): ProvisionedOrganization
     {
-        // Idempotent par référence : une reprise sur panne réseau est sans risque.
-        $data = $this->serviceRequest('POST', 'organizations:provision', '/api/v1/provisioning/organizations', [
-            'json' => array_filter([
-                'reference' => $reference,
-                'email' => $ownerEmail,
-                'organization_name' => $organizationName,
-                'locale' => $locale,
-            ], fn ($value) => $value !== null),
-        ], retry: true)->json('data');
+        try {
+            // Idempotent par référence : une reprise sur panne réseau est sans risque.
+            $data = $this->serviceRequest('POST', 'organizations:provision', '/api/v1/provisioning/organizations', [
+                'json' => array_filter([
+                    'reference' => $reference,
+                    'email' => $ownerEmail,
+                    'organization_name' => $organizationName,
+                    'legal' => ['siret' => $legalSiret],
+                    'locale' => $locale,
+                ], fn ($value) => $value !== null),
+            ], retry: true)->json('data');
+        } catch (IdentityRejected $rejected) {
+            if (in_array($rejected->error, LegalIdentityRejected::CODES, true)) {
+                throw new LegalIdentityRejected($rejected->status, $rejected->getMessage(), $rejected->error, $rejected->body);
+            }
+
+            throw $rejected;
+        }
 
         if (! is_array($data) || ! isset($data['organization_id'], $data['slug'], $data['reference'], $data['state'])) {
             throw new IdentityUnavailable('Identity returned an unusable provisioning response.');
@@ -443,6 +457,11 @@ class IdentityClient
             if ($response->serverError() || $response->status() === 429) {
                 if ($attempt < $attempts) {
                     continue;
+                }
+
+                // Sirene est en panne (AR-075) : ce n'est pas Identity qui l'est, la personne peut réessayer dans un instant.
+                if ($response->status() === 503 && $response->json('error') === 'registry_unavailable') {
+                    throw new RegistryUnavailable('The company registry is unavailable.');
                 }
 
                 throw new IdentityUnavailable("Identity answered HTTP {$response->status()}.");

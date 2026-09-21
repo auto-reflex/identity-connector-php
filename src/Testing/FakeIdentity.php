@@ -29,8 +29,13 @@ final class FakeIdentity
     /** @var array<string, true> */
     private array $revoked = [];
 
-    /** @var array<string, array{name: string, slug: string, created_at: string, members: array<string, string>}> */
+    /** @var array<string, array{name: string, slug: string, created_at: string, members: array<string, string>, kind: string, legal: array<string, mixed>|null}> */
     private array $organizations = [];
+
+    /** @var array<string, string> SIRET que le faux registre refuse : `taken`, `not_found` ou `inactive` */
+    private array $siretRules = [];
+
+    private bool $registryDown = false;
 
     /** @var array<string, string> secrets des clients de service, par `client_id` */
     private array $serviceClients = [];
@@ -41,7 +46,7 @@ final class FakeIdentity
     /** @var list<string> comptes dont le produit a accusé l'effacement */
     private array $acknowledged = [];
 
-    /** @var array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int}> organisations provisionnées, par référence */
+    /** @var array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int, legal: array<string, mixed>}> organisations provisionnées, par référence */
     private array $provisioned = [];
 
     private FakeVehicles $vehicleStore;
@@ -137,18 +142,82 @@ final class FakeIdentity
     }
 
     /**
-     * Déclare une organisation Identity et ses membres (`userId => rôle`).
+     * Déclare une organisation Identity et ses membres (`userId => rôle`). `$legal` : son identité légale (AR-075), voir
+     * `legalBlock()` ; `null` sans SIRET.
      *
      * @param  array<string, string>  $members
+     * @param  array<string, mixed>|null  $legal
      */
-    public function organization(string $id, string $name, array $members, ?string $slug = null): self
+    public function organization(string $id, string $name, array $members, ?string $slug = null, ?array $legal = null, string $kind = 'professional'): self
     {
         $this->organizations[$id] = [
             'name' => $name,
             'slug' => $slug ?? Str::slug($name),
             'created_at' => Carbon::now()->toIso8601String(),
             'members' => $members,
+            'kind' => $kind,
+            'legal' => $legal,
         ];
+
+        return $this;
+    }
+
+    /**
+     * Le bloc `legal` tel qu'Identity le sert (AR-075), vérifié, pour `organization(... legal: ...)`.
+     *
+     * @return array<string, mixed>
+     */
+    public function legalBlock(string $siret, string $legalName = 'Débosselage Durand', bool $verified = true): array
+    {
+        return [
+            'registry' => 'fr_sirene',
+            'siret' => $siret,
+            'siren' => substr($siret, 0, 9),
+            'legal_name' => $legalName,
+            'form' => '5710',
+            'address' => ['line' => '12 RUE DES ATELIERS', 'postal_code' => '69003', 'city' => 'LYON'],
+            'naf_code' => '45.20A',
+            'verified' => $verified,
+            'verified_at' => $verified ? Carbon::now()->toIso8601String() : null,
+        ];
+    }
+
+    /**
+     * Le faux registre refuse ce SIRET comme déjà porté par une autre organisation (409 `siret_taken`, sans dire laquelle).
+     */
+    public function siretTaken(string $siret): self
+    {
+        $this->siretRules[$siret] = 'taken';
+
+        return $this;
+    }
+
+    /**
+     * Le faux registre ne connaît pas ce SIRET (422 `siret_not_found`).
+     */
+    public function siretNotFound(string $siret): self
+    {
+        $this->siretRules[$siret] = 'not_found';
+
+        return $this;
+    }
+
+    /**
+     * L'établissement de ce SIRET est fermé (422 `siret_inactive`).
+     */
+    public function siretInactive(string $siret): self
+    {
+        $this->siretRules[$siret] = 'inactive';
+
+        return $this;
+    }
+
+    /**
+     * Sirene ne répond pas : le provisionnement échoue en 503 `registry_unavailable` (`RegistryUnavailable`) et rien n'est créé.
+     */
+    public function registryUnavailable(bool $down = true): self
+    {
+        $this->registryDown = $down;
 
         return $this;
     }
@@ -279,16 +348,17 @@ final class FakeIdentity
      *     ['body' => $body, 'server' => $server] = $identity->webhook('account.suspended', $userId);
      *     $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertNoContent();
      *
-     * `$subjectId` est l'identifiant du compte, de l'organisation pour `organization.deleted` et `organization.owner_joined`, du véhicule pour `vehicle.*`. `account.deletion_requested`
+     * `$subjectId` est l'identifiant du compte, de l'organisation pour `organization.deleted`, `organization.updated` et `organization.owner_joined`, du véhicule pour `vehicle.*`. `account.deletion_requested`
      * porte en plus `scheduled_for` ; `$data` remplace le contenu si besoin.
      *
-     * @param  array<string, string>|null  $data
+     * @param  array<string, string|list<string>>|null  $data
      * @return array{body: string, server: array<string, string>}
      */
     public function webhook(string $type, string $subjectId, ?string $eventId = null, ?int $timestamp = null, ?array $data = null): array
     {
         $data ??= match ($type) {
             'organization.deleted' => ['organization_id' => $subjectId],
+            'organization.updated' => ['organization_id' => $subjectId, 'changed' => ['legal']],
             'organization.owner_joined' => ['organization_id' => $subjectId, 'user_id' => 'owner-of-'.$subjectId, 'reference' => 'ref-'.$subjectId],
             'vehicle.deleted' => ['vehicle_id' => $subjectId],
             'vehicle.unlinked' => ['vehicle_id' => $subjectId, 'product' => str_replace('-api', '', $this->audience)],
@@ -473,7 +543,7 @@ final class FakeIdentity
      * Ce que le produit a provisionné auprès du faux Identity : `référence => [organization_id, email, name, locale, owner, sent]`
      * (`sent` = nombre d'invitations envoyées).
      *
-     * @return array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int}>
+     * @return array<string, array{organization_id: string, slug: string, email: string, name: string, locale: string|null, owner: string|null, sent: int, legal: array<string, mixed>}>
      */
     public function provisioned(): array
     {
@@ -496,6 +566,8 @@ final class FakeIdentity
             'slug' => $entry['slug'],
             'created_at' => Carbon::now()->toIso8601String(),
             'members' => [$userId => 'owner'],
+            'kind' => 'professional',
+            'legal' => $entry['legal'],
         ];
 
         return $this->webhook('organization.owner_joined', $entry['organization_id'], $eventId, data: [
@@ -520,6 +592,7 @@ final class FakeIdentity
             'reference' => $reference,
             'state' => $state($entry),
             'owner_user_id' => $entry['owner'],
+            'legal' => $entry['legal'],
         ]];
 
         if ($request->method() === 'GET') {
@@ -533,6 +606,7 @@ final class FakeIdentity
             'reference' => is_string($data['reference'] ?? null) && $data['reference'] !== '' ? null : ['required'],
             'email' => is_string($data['email'] ?? null) && filter_var($data['email'], FILTER_VALIDATE_EMAIL) ? null : ['invalid'],
             'organization_name' => is_string($data['organization_name'] ?? null) && mb_strlen($data['organization_name']) >= 2 ? null : ['invalid'],
+            'legal.siret' => is_string($data['legal']['siret'] ?? null) && $data['legal']['siret'] !== '' ? null : ['required'],
         ]);
 
         if ($errors !== []) {
@@ -541,6 +615,17 @@ final class FakeIdentity
 
         $reference = $data['reference'];
         $existing = $this->provisioned[$reference] ?? null;
+        $legal = $existing['legal'] ?? null;
+
+        if ($existing === null) {
+            $refused = $this->legalRefusal((string) ($data['legal']['siret'] ?? ''));
+
+            if ($refused instanceof PromiseInterface) {
+                return $refused;
+            }
+
+            $legal = $this->legalBlock($refused, (string) $data['organization_name']);
+        }
 
         $this->provisioned[$reference] = [
             'organization_id' => $existing['organization_id'] ?? (string) Str::ulid(),
@@ -550,9 +635,35 @@ final class FakeIdentity
             'locale' => $data['locale'] ?? null,
             'owner' => $existing['owner'] ?? null,
             'sent' => ($existing['sent'] ?? 0) + (($existing['owner'] ?? null) === null ? 1 : 0),
+            'legal' => $legal,
         ];
 
         return Http::response($resource($reference, $this->provisioned[$reference]));
+    }
+
+    /**
+     * Ce qu'Identity répondrait à un SIRET : le SIRET normalisé s'il est accepté, sinon la réponse d'erreur.
+     *
+     * @return PromiseInterface|string
+     */
+    private function legalRefusal(string $raw)
+    {
+        $siret = preg_replace('/[\s.\-]/', '', $raw);
+
+        if (preg_match('/^\d{14}$/', (string) $siret) !== 1) {
+            return Http::response(['error' => 'siret_invalid', 'message' => 'Invalid SIRET.'], 422);
+        }
+
+        if ($this->registryDown) {
+            return Http::response(['error' => 'registry_unavailable', 'message' => 'The company registry is unavailable.'], 503);
+        }
+
+        return match ($this->siretRules[$siret] ?? null) {
+            'taken' => Http::response(['error' => 'siret_taken', 'message' => 'SIRET already used.'], 409),
+            'not_found' => Http::response(['error' => 'siret_not_found', 'message' => 'SIRET not found.'], 422),
+            'inactive' => Http::response(['error' => 'siret_inactive', 'message' => 'Establishment closed.'], 422),
+            default => (string) $siret,
+        };
     }
 
     /**
@@ -592,12 +703,19 @@ final class FakeIdentity
     }
 
     /**
-     * @param  array{name: string, slug: string, created_at: string, members: array<string, string>}  $organization
-     * @return array{id: string, name: string, slug: string, role: string}
+     * @param  array{name: string, slug: string, created_at: string, members: array<string, string>, kind: string, legal: array<string, mixed>|null}  $organization
+     * @return array<string, mixed>
      */
     private function summary(string $id, array $organization, string $person): array
     {
-        return ['id' => $id, 'name' => $organization['name'], 'slug' => $organization['slug'], 'role' => $organization['members'][$person]];
+        return [
+            'id' => $id,
+            'name' => $organization['name'],
+            'slug' => $organization['slug'],
+            'role' => $organization['members'][$person],
+            'kind' => $organization['kind'],
+            'legal' => $organization['legal'],
+        ];
     }
 
     /**

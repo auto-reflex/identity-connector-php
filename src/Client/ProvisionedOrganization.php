@@ -3,7 +3,7 @@
 namespace AutoGteck\IdentityConnector\Client;
 
 /**
- * Organisation créée par ce produit pour un futur propriétaire (AR-070).
+ * Organisation créée par ce produit pour un futur propriétaire (AR-070), avec l'identité légale vérifiée par Identity (AR-075).
  */
 final readonly class ProvisionedOrganization
 {
@@ -23,6 +23,7 @@ final readonly class ProvisionedOrganization
         public string $reference,
         public string $state,
         public ?string $ownerUserId = null,
+        public ?LegalIdentity $legal = null,
     ) {}
 
     /**
@@ -36,6 +37,7 @@ final readonly class ProvisionedOrganization
             (string) $data['reference'],
             (string) $data['state'],
             isset($data['owner_user_id']) ? (string) $data['owner_user_id'] : null,
+            LegalIdentity::fromArray(isset($data['legal']) && is_array($data['legal']) ? $data['legal'] : null),
         );
     }
 

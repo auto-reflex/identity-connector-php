@@ -3,8 +3,8 @@
 namespace AutoGteck\IdentityConnector\Client;
 
 /**
- * Une organisation Identity vue par une personne : son rôle (`owner`, `admin`, `member`) et, pour le
- * détail, les membres (jamais leur email).
+ * Une organisation Identity vue par une personne : son rôle (`owner`, `admin`, `member`), son type (`professional` ou
+ * `association`), son identité légale (`null` sans SIRET, AR-075) et, pour le détail, les membres (jamais leur email).
  */
 final readonly class Organization
 {
@@ -17,6 +17,8 @@ final readonly class Organization
         public string $slug,
         public string $role,
         public ?array $members = null,
+        public string $kind = 'professional',
+        public ?LegalIdentity $legal = null,
     ) {}
 
     /**
@@ -32,6 +34,8 @@ final readonly class Organization
             members: isset($data['members']) && is_array($data['members'])
                 ? array_values(array_map(fn (array $member) => OrganizationMember::fromArray($member), $data['members']))
                 : null,
+            kind: (string) ($data['kind'] ?? 'professional'),
+            legal: LegalIdentity::fromArray(isset($data['legal']) && is_array($data['legal']) ? $data['legal'] : null),
         );
     }
 }

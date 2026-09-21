@@ -246,11 +246,19 @@ $empty = $api('/api/organizations', $access);
 step('organisations : liste vide, via échange de token', $empty['status'] === 200 && $empty['json']['data'] === []);
 
 $page = (string) $http->get('/account/organizations')->getBody();
-$created = $http->post('/account/organizations', ['form_params' => ['_token' => field($page, '_token'), 'name' => 'Garage Connecteur '.bin2hex(random_bytes(2))]]);
+
+// Identité légale (AR-075) : un professionnel doit donner un SIRET valide. Ces deux refus sont locaux (aucun appel à Sirene : le
+// smoke n'en dépend pas) ; la vérification réelle auprès de Sirene est couverte par l'essai manuel documenté dans AR-075.
+$refused = $http->post('/account/organizations', ['form_params' => ['_token' => field($page, '_token'), 'name' => 'Sans SIRET', 'kind' => 'professional']]);
+$badKey = $http->post('/account/organizations', ['form_params' => ['_token' => field($page, '_token'), 'name' => 'Faux SIRET', 'kind' => 'professional', 'siret' => '12345678901234']]);
+step('professionnel sans SIRET, ou avec un SIRET dont la clé est fausse : refusé, rien créé', $refused->getStatusCode() === 302 && $badKey->getStatusCode() === 302 && ($api('/api/organizations', $access)['json']['data'] ?? null) === []);
+
+$created = $http->post('/account/organizations', ['form_params' => ['_token' => field($page, '_token'), 'name' => 'Garage Connecteur '.bin2hex(random_bytes(2)), 'kind' => 'association']]);
 $orgSlug = basename($created->getHeaderLine('Location'));
 $organizations = $api('/api/organizations', $access);
 $orgId = $organizations['json']['data'][0]['id'] ?? '';
 step('organisation créée dans Identity : lue avec le rôle owner', count($organizations['json']['data'] ?? []) === 1 && $organizations['json']['data'][0]['role'] === 'owner' && $organizations['json']['data'][0]['slug'] === $orgSlug);
+step('une association peut se passer de SIRET : type lu, `legal` nul', ($organizations['json']['data'][0]['kind'] ?? '') === 'association' && array_key_exists('legal', $organizations['json']['data'][0]) && $organizations['json']['data'][0]['legal'] === null);
 $detail = $api('/api/organizations/'.$orgId, $access);
 step('détail : membres avec nom, sans email', ($detail['json']['data']['members'][0]['name'] ?? null) === 'Connecteur Smoke' && ! str_contains(json_encode($detail['json']), $email));
 step('organisation inconnue ou d\'autrui : 404', $api('/api/organizations/01J0NOBODY000000000000000Z', $access)['status'] === 404);

@@ -186,7 +186,7 @@ Event::listen(AutoGteck\IdentityConnector\Events\AccountSuspended::class, functi
 ```
 
 Événements relayés : `AccountSuspended`, `AccountReinstated`, `AccountDeletionRequested`, `AccountDeletionCancelled`,
-`AccountDeletionDue`, `OrganizationDeleted` et `OrganizationOwnerJoined` (AR-070) ; un type ou une version inconnus reçoivent 202 et sont ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
+`AccountDeletionDue`, `OrganizationDeleted`, `OrganizationOwnerJoined` (AR-070) et `OrganizationUpdated` (AR-075) ; un type ou une version inconnus reçoivent 202 et sont ignorés. Si le traitement lève une exception, l'événement n'est pas marqué comme traité et Identity le renverra.
 Une suspension locale du produit ne doit pas être levée par `AccountReinstated` (voir `workbench/app/Listeners`).
 
 ## Provisionner l'organisation d'un professionnel (AR-070)
@@ -199,6 +199,7 @@ $organization = Identity::client()->provisionOrganization(
     reference: (string) $demande->id,          // votre identifiant : rappeler avec la même référence ne crée rien de plus
     ownerEmail: $demande->email,
     organizationName: $demande->company_name,
+    legalSiret: $demande->siret,               // obligatoire (AR-075) : Identity le vérifie auprès de Sirene
     locale: 'fr',
 );
 $organization->state; // pending : invitation envoyée ; rappeler renvoie un nouveau lien (adresse corrigée, lien perdu)
@@ -209,6 +210,30 @@ L'organisation existe tout de suite, sans membre. La personne devient propriéta
 vérifié identique, AR-050). Vous en êtes prévenu par l'événement `OrganizationOwnerJoined` (`organizationId`, `userId`,
 `reference`) : reliez alors votre donnée locale (`identity_organization_id`, propriétaire) et activez-la. En test :
 `$identity->provisioned()` et `$identity->ownerJoins($reference, $userId)` (renvoie le webhook signé).
+
+### Identité légale : le SIRET (AR-075, connecteur ≥ 0.6)
+
+Identity vérifie le SIRET **une fois** (format et clé de Luhn, puis Sirene : établissement existant **et** actif) avant de créer quoi que ce soit ; rappeler avec
+la même référence ne relance pas la vérification. Deux familles d'erreurs, à ne pas confondre :
+
+```php
+use AutoGteck\IdentityConnector\Client\{LegalIdentityRejected, RegistryUnavailable};
+
+try {
+    $organization = Identity::client()->provisionOrganization(/* … */);
+} catch (LegalIdentityRejected $e) {
+    // erreur de formulaire, à montrer : $e->error = siret_invalid | siret_not_found | siret_inactive | siret_taken
+    // (siret_taken ne dit pas quelle organisation détient le SIRET)
+} catch (RegistryUnavailable) {
+    // Sirene ne répond pas, rien n'a été créé : « réessayez dans un instant » (RegistryUnavailable est une IdentityUnavailable)
+}
+```
+
+`Identity::organization($id)` et `organizations()` exposent `kind` (`professional` | `association`) et `legal` (`null` sans SIRET, sinon `LegalIdentity` : `siret`,
+`siren`, `legalName`, `form`, `address`, `nafCode`, `verified`, `verifiedAt`, `registry`). **Un produit qui facture copie `legal` sur chaque facture émise** ;
+un produit qui publie (la Map) exige `verified`. L'événement `OrganizationUpdated` (`organizationId`, `changed: ['legal']`) prévient d'un SIRET posé, changé ou retiré, sans
+porter le bloc légal : relire l'organisation, et ignorer celles que le produit ne connaît pas. En test : `$identity->legalBlock($siret)` avec
+`organization(…, legal: …)`, `siretTaken()`, `siretNotFound()`, `siretInactive()`, `registryUnavailable()`, et `$identity->webhook('organization.updated', $id)`.
 
 ## Véhicules (AR-057 à AR-059)
 
@@ -271,7 +296,7 @@ it('renvoie mon profil', function () {
 ```
 
 `FakeIdentity` simule le JWKS, `/userinfo`, l'échange de token, le token de service, l'API organisations et le statut
-de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), le provisionnement d'organisations (`provisioned()`, `ownerJoins()`), les véhicules (`vehicles()->add(...)`, mêmes groupes, visibilité et contrôle
+de compte, l'accusé de suppression (`deletion()`, `acknowledgedDeletions()`), le provisionnement d'organisations avec SIRET (`provisioned()`, `ownerJoins()`, `siretTaken()`, `registryUnavailable()`…), les véhicules (`vehicles()->add(...)`, mêmes groupes, visibilité et contrôle
 de version que le vrai service, **sans validation des champs**), et permet de simuler une panne (`goDown()`),
 une révocation, une rotation de clé et un webhook signé (`webhook()`), avec les mêmes formes et les mêmes refus que le vrai service.
 
