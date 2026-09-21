@@ -106,6 +106,53 @@ Identity::token()->roles;     // list<string>
   rôle : un token de l'application mobile d'un administrateur porte ses rôles, mais pas ce scope.
 - Tests : `$identity->tokenFor($id, claims: ['roles' => ['admin']])`.
 
+## Connexion d'une application web Blade (AR-072)
+
+Pour un back-office **Laravel + Blade** (session serveur, pas d'API à jeton) : le connecteur fait la connexion OAuth
+(code d'autorisation + **PKCE S256**, client **confidentiel**), garde la connexion, la renouvelle et la ferme. Rien de ceci
+n'est lu tant qu'aucune route web n'est enregistrée : les APIs ne changent pas.
+
+```dotenv
+IDENTITY_ISSUER=https://identity.exemple                # URL publique d'Identity (là où le navigateur est envoyé)
+IDENTITY_AUDIENCE=beacon-api                            # audience du produit
+IDENTITY_WEB_CLIENT_ID=beacon-admin-web                 # client confidentiel déclaré dans Identity
+IDENTITY_WEB_CLIENT_SECRET=…                            # secret du client : jamais dans l'image
+IDENTITY_WEB_SCOPE=beacon:access                        # scope d'accès du produit, exigé dans le token
+```
+
+```php
+// routes/web.php : DANS le groupe de l'application (préfixe, domaine, middleware `web`, préfixe de noms)
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::identityWeb();                                // GET auth/redirect, GET auth/callback, POST auth/logout
+    Route::get('login', fn () => view('login'))->name('login');   // la page de connexion de l'application
+
+    Route::middleware('identity.web:admin')->group(function () { /* pages protégées */ });
+});
+
+// config (AppServiceProvider::boot) : où renvoyer, où atterrir
+config(['identity-connector.web.login_page' => 'admin.login', 'identity-connector.web.home' => 'admin.dashboard']);
+```
+
+- **Adresse de retour** : `route('…identity.web.callback')`, par exemple `https://app/admin/auth/callback`. Elle doit être
+  déclarée **à l'identique** dans Identity (`redirect_uris` du client) ; `IDENTITY_WEB_REDIRECT_URI` la remplace.
+- **`identity.web`** exige la connexion (sinon redirection vers `login_page`, ou 401 JSON pour une requête JSON) ;
+  `identity.web:admin,moderator` exige en plus l'un des rôles (sinon **403**, à habiller dans l'application). La personne est
+  lue par `Identity::web()` (`id`, `name`, `roles`), le token vérifié par `Identity::token()` et `Identity::hasRole('admin')`.
+- **Erreurs de connexion** : retour sur `login_page` avec le code en session flash `identity_error` (`access_denied`,
+  `invalid_state`, `unavailable`, `insufficient_scope`, `invalid_token`, `failed`, `session_expired`).
+- **Déconnexion** : `POST` (CSRF) ; révoque le token chez Identity, oublie la connexion, et la connexion suivante envoie
+  `prompt=login` (la session d'Identity reste ouverte : sans cela le retour serait automatique).
+- **Renouvellement** : à l'approche de l'échéance du token d'accès (15 minutes), sous verrou de cache. Un rôle retiré ou un
+  compte suspendu prend donc effet en 15 minutes au plus. Identity injoignable : la connexion vit jusqu'à l'échéance de son
+  token, puis se ferme. Le magasin de cache (`IDENTITY_CACHE_STORE`, défaut : celui de l'application) doit gérer les verrous
+  (`database`, `redis`, `file`, `array`).
+- **Où sont les jetons** : chiffrés **dans le cache**, jamais dans la session (un refresh token ne sert qu'une fois : deux
+  requêtes parallèles depuis une copie de session déconnecteraient la personne). La session ne porte qu'un identifiant.
+  Activer `SESSION_ENCRYPT` reste recommandé.
+- Tests : `$this->actingAsWebIdentity($identity, $userId, roles: ['admin'])` ouvre une connexion ; pour jouer le parcours,
+  `$identity->web()->approve($locationVersIdentity, $userId)` rend l'adresse de retour à suivre (`refreshCalls()`,
+  `revokedTokens()`, `roles()`).
+
 ## Appeler Identity
 
 ```php

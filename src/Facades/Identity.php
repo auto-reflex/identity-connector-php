@@ -8,11 +8,13 @@ use AutoGteck\IdentityConnector\Client\PersonVehicles;
 use AutoGteck\IdentityConnector\Client\VehicleClient;
 use AutoGteck\IdentityConnector\IdentityManager;
 use AutoGteck\IdentityConnector\Jwt\VerifiedToken;
+use AutoGteck\IdentityConnector\Web\WebIdentity;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Facade;
 
 /**
  * @method static VerifiedToken|null token()
+ * @method static WebIdentity|null web()
  * @method static Authenticatable|null profile()
  * @method static list<Organization> organizations()
  * @method static Organization|null organization(string $id)

@@ -50,6 +50,10 @@ class WorkbenchServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
         $this->loadRoutesFrom(__DIR__.'/../../routes/api.php');
+        $this->loadRoutesFrom(__DIR__.'/../../routes/web.php');
+
+        // Comme une application Blade : page de connexion et accueil sous un préfixe et un préfixe de noms.
+        config(['identity-connector.web.login_page' => 'admin.login', 'identity-connector.web.home' => 'admin.dashboard']);
 
         RateLimiter::for('by-person', function (Request $request) {
             $user = $request->user();

@@ -46,6 +46,8 @@ final class FakeIdentity
 
     private FakeVehicles $vehicleStore;
 
+    private FakeWebGrants $webGrants;
+
     private int $exchangeCalls = 0;
 
     private int $serviceTokenCalls = 0;
@@ -61,6 +63,20 @@ final class FakeIdentity
     {
         $this->published = [$key];
         $this->vehicleStore = new FakeVehicles(str_replace('-api', '', $audience));
+        $this->webGrants = new FakeWebGrants($this);
+    }
+
+    /**
+     * La connexion d'une application web (AR-072) : codes d'autorisation, refresh, révocation.
+     */
+    public function web(): FakeWebGrants
+    {
+        return $this->webGrants;
+    }
+
+    public function isRevoked(string $subject): bool
+    {
+        return isset($this->revoked[$subject]);
     }
 
     /**
@@ -83,6 +99,11 @@ final class FakeIdentity
         Config::set('identity-connector.url', null);
         Config::set('identity-connector.jwks_url', null);
         Config::set('identity-connector.webhooks.secrets', [self::WEBHOOK_SECRET]);
+
+        // Connexion web : de quoi fonctionner sans configuration ; une valeur déjà posée par l'application (son `.env` de test) est gardée.
+        foreach (['client_id' => 'test-web-client', 'client_secret' => 'test-web-secret', 'scope' => 'test:access'] as $key => $default) {
+            Config::set("identity-connector.web.{$key}", Config::get("identity-connector.web.{$key}") ?: $default);
+        }
 
         Http::fake([rtrim($issuer, '/').'/*' => fn (Request $request) => $fake->respond($request)]);
 
@@ -314,6 +335,7 @@ final class FakeIdentity
             ),
             '/userinfo' => $this->userInfo($request),
             '/oauth/token' => $this->token($request),
+            '/oauth/revoke' => $this->webGrants->revoke($request->data()),
             default => $this->api($request),
         };
     }
@@ -324,6 +346,10 @@ final class FakeIdentity
     private function token(Request $request)
     {
         $data = $request->data();
+
+        if (in_array($data['grant_type'] ?? null, ['authorization_code', 'refresh_token'], true)) {
+            return $this->webGrants->token($data);
+        }
 
         if (($data['grant_type'] ?? null) === 'client_credentials') {
             $this->serviceTokenCalls++;

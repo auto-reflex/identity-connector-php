@@ -82,6 +82,27 @@ return [
     ],
 
     /*
+    | Connexion d'une application WEB (Blade, session serveur, AR-072). Inutile pour une API : rien de ceci n'est lu tant qu'aucune
+    | route `Identity::webRoutes()` n'existe. Le client est CONFIDENTIEL (code d'autorisation + PKCE) ; son secret reste sur le serveur.
+    |
+    | `scope` : scope d'accès du produit (ex. `beacon:access`), exigé dans le token ; `profile` est ajouté pour le nom.
+    | `redirect_uri` : adresse de retour ; par défaut celle de la route de rappel. Elle doit être déclarée à l'identique dans Identity.
+    | `login_page` / `home` : nom de route ou chemin de la page de connexion de l'application (les erreurs y reviennent en session
+    | flash `identity_error`) et de la page d'accueil après connexion. `ttl_minutes` : durée maximale d'une connexion sans
+    | renouvellement. `refresh_margin` : secondes avant l'échéance du token d'accès où l'on renouvelle.
+    */
+    'web' => [
+        'client_id' => env('IDENTITY_WEB_CLIENT_ID'),
+        'client_secret' => env('IDENTITY_WEB_CLIENT_SECRET'),
+        'scope' => env('IDENTITY_WEB_SCOPE'),
+        'redirect_uri' => env('IDENTITY_WEB_REDIRECT_URI'),
+        'login_page' => null,
+        'home' => '/',
+        'ttl_minutes' => (int) env('IDENTITY_WEB_TTL_MINUTES', 720),
+        'refresh_margin' => (int) env('IDENTITY_WEB_REFRESH_MARGIN', 60),
+    ],
+
+    /*
     | Appels HTTP vers Identity : timeouts courts, pour dégrader plutôt qu'attendre (AR-033).
     */
     'http' => [

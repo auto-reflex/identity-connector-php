@@ -193,6 +193,41 @@ class IdentityClient
     }
 
     /**
+     * Appel du point d'accès `/oauth/token` avec un formulaire complet (code d'autorisation, refresh d'un client web, AR-072).
+     * Jamais rejoué : un code ou un refresh token ne sert qu'une fois.
+     *
+     * @param  array<string, string>  $form
+     * @return array<string, mixed>
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function oauthToken(array $form): array
+    {
+        $body = $this->send(fn (PendingRequest $request) => $request->asForm()->post($this->url('/oauth/token'), $form), retry: false)->json();
+
+        if (! is_array($body)) {
+            throw new IdentityUnavailable('Identity returned an unusable token response.');
+        }
+
+        return $body;
+    }
+
+    /**
+     * Révoque un token (RFC 7009 : l'access token et les refresh tokens qui s'y rattachent). Identity répond 200 même pour un
+     * token inconnu.
+     *
+     * @param  array<string, string>  $form  `token`, `client_id`, `client_secret`
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function oauthRevoke(array $form): void
+    {
+        $this->send(fn (PendingRequest $request) => $request->asForm()->post($this->url('/oauth/revoke'), $form), retry: false);
+    }
+
+    /**
      * Token `identity-api` d'une personne, par échange RFC 8693 depuis son token produit (AR-047).
      *
      * @throws IdentityUnavailable

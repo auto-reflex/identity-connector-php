@@ -7,11 +7,16 @@ use AutoGteck\IdentityConnector\Client\VehicleClient;
 use AutoGteck\IdentityConnector\Http\Controllers\IdentityWebhookController;
 use AutoGteck\IdentityConnector\Http\Middleware\AuthenticateIdentity;
 use AutoGteck\IdentityConnector\Http\Middleware\RequireRole;
+use AutoGteck\IdentityConnector\Http\Middleware\RequireWebIdentity;
 use AutoGteck\IdentityConnector\Http\Middleware\ResolveProfile;
 use AutoGteck\IdentityConnector\Http\Middleware\VerifyIdentitySignature;
 use AutoGteck\IdentityConnector\Jwt\JwtVerifier;
 use AutoGteck\IdentityConnector\Jwt\KeySetProvider;
 use AutoGteck\IdentityConnector\Jwt\RemoteKeySet;
+use AutoGteck\IdentityConnector\Web\WebLogin;
+use AutoGteck\IdentityConnector\Web\WebLoginClient;
+use AutoGteck\IdentityConnector\Web\WebRoutes;
+use AutoGteck\IdentityConnector\Web\WebSession;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Encryption\StringEncrypter;
@@ -75,6 +80,30 @@ class IdentityServiceProvider extends ServiceProvider
             (int) $app['config']->get('identity-connector.vehicles.stale_seconds'),
         ));
 
+        // Connexion d'une application web (AR-072) : rien n'est construit, donc rien n'est exigé, tant qu'une route web ne s'en sert pas.
+        $this->app->singleton(WebLoginClient::class, fn ($app) => new WebLoginClient(
+            $app->make(IdentityClient::class),
+            $this->required('issuer'),
+            $this->webRequired('client_id'),
+            $this->webRequired('client_secret'),
+            $this->scopes(),
+        ));
+
+        $this->app->singleton(WebSession::class, fn ($app) => new WebSession(
+            $app['cache']->store($app['config']->get('identity-connector.cache.store')),
+            $app->make(StringEncrypter::class),
+            max(60, (int) $app['config']->get('identity-connector.web.ttl_minutes')) * 60,
+            max(0, (int) $app['config']->get('identity-connector.web.refresh_margin')),
+        ));
+
+        $this->app->singleton(WebLogin::class, fn ($app) => new WebLogin(
+            $app->make(WebLoginClient::class),
+            $app->make(IdentityClient::class),
+            $app->make(JwtVerifier::class),
+            $app->make(WebSession::class),
+            $this->webRequired('scope'),
+        ));
+
         $this->app->scoped(IdentityManager::class, fn ($app) => new IdentityManager($app, $app->make(IdentityClient::class), $app->make(VehicleClient::class)));
     }
 
@@ -83,6 +112,13 @@ class IdentityServiceProvider extends ServiceProvider
         Route::aliasMiddleware('identity.auth', AuthenticateIdentity::class);
         Route::aliasMiddleware('identity.profile', ResolveProfile::class);
         Route::aliasMiddleware('identity.role', RequireRole::class);
+        Route::aliasMiddleware('identity.web', RequireWebIdentity::class);
+
+        // `Route::identityWeb()`, à appeler dans le groupe de l'application. Une macro et non la façade : enregistrer des routes ne doit
+        // pas construire les clients d'Identity (ni exiger leur configuration) au démarrage, ni sous `route:cache`.
+        Route::macro('identityWeb', fn (string $path = 'auth') => WebRoutes::register($path));
+
+        RateLimiter::for('identity-web', fn (Request $request) => Limit::perMinute(60)->by($request->ip()));
 
         $this->registerWebhookRoute();
 
@@ -124,6 +160,25 @@ class IdentityServiceProvider extends ServiceProvider
         return is_string($configured) && $configured !== ''
             ? $configured
             : rtrim($this->required('issuer'), '/').'/.well-known/jwks.json';
+    }
+
+    private function webRequired(string $key): string
+    {
+        $value = config("identity-connector.web.{$key}");
+
+        if (! is_string($value) || $value === '') {
+            throw new InvalidArgumentException("identity-connector: the web login needs `web.{$key}` (IDENTITY_WEB_".strtoupper($key).').');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Les scopes demandés à la connexion : `profile` (le nom) et le scope d'accès du produit.
+     */
+    private function scopes(): string
+    {
+        return 'profile '.$this->webRequired('scope');
     }
 
     private function required(string $key): string

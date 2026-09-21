@@ -21,6 +21,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
         // Indépendant de testbench.yaml (qui sert au smoke) : cache en mémoire, base SQLite en mémoire.
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('session.driver', 'array');
     }
 
     protected function defineDatabaseMigrations(): void

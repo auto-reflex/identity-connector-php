@@ -9,7 +9,9 @@ use AutoGteck\IdentityConnector\Client\Organization;
 use AutoGteck\IdentityConnector\Client\PersonVehicles;
 use AutoGteck\IdentityConnector\Client\VehicleClient;
 use AutoGteck\IdentityConnector\Http\Middleware\AuthenticateIdentity;
+use AutoGteck\IdentityConnector\Http\Middleware\RequireWebIdentity;
 use AutoGteck\IdentityConnector\Jwt\VerifiedToken;
+use AutoGteck\IdentityConnector\Web\WebIdentity;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
@@ -37,6 +39,16 @@ class IdentityManager
         $token = $this->request()->attributes->get(AuthenticateIdentity::ATTRIBUTE);
 
         return $token instanceof VerifiedToken ? $token : null;
+    }
+
+    /**
+     * La personne connectée par le navigateur (après `identity.web`, AR-072) : nom, rôles.
+     */
+    public function web(): ?WebIdentity
+    {
+        $identity = $this->request()->attributes->get(RequireWebIdentity::ATTRIBUTE);
+
+        return $identity instanceof WebIdentity ? $identity : null;
     }
 
     /**
