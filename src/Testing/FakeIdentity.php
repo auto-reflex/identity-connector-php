@@ -595,6 +595,15 @@ final class FakeIdentity
             'legal' => $entry['legal'],
         ]];
 
+        if ($request->method() === 'GET' && str_starts_with($path, '/api/v1/provisioning/organizations/by-id/')) {
+            $id = rawurldecode(substr($path, strlen('/api/v1/provisioning/organizations/by-id/')));
+            $organization = $this->organizations[$id] ?? null;
+
+            return $organization === null
+                ? Http::response(['message' => 'Not Found'], 404)
+                : Http::response(['data' => ['organization_id' => $id, 'legal' => $organization['legal']]]);
+        }
+
         if ($request->method() === 'GET') {
             $reference = rawurldecode(substr($path, strlen('/api/v1/provisioning/organizations/')));
 

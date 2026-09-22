@@ -223,6 +223,29 @@ class IdentityClient
     }
 
     /**
+     * Identité légale d'une organisation par son identifiant (AR-078), que ce produit l'ait provisionnée ou non — une fiche peut se
+     * rattacher à une organisation que la personne possédait déjà (créée directement chez Identity, ou par un autre produit).
+     * `null` : organisation inexistante, ou sans identité légale.
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function organizationLegal(string $organizationId): ?LegalIdentity
+    {
+        try {
+            $data = $this->serviceRequest('GET', 'organizations:provision', '/api/v1/provisioning/organizations/by-id/'.rawurlencode($organizationId))->json('data');
+        } catch (IdentityRejected $rejected) {
+            if ($rejected->status === 404) {
+                return null;
+            }
+
+            throw $rejected;
+        }
+
+        return is_array($data) ? LegalIdentity::fromArray(isset($data['legal']) && is_array($data['legal']) ? $data['legal'] : null) : null;
+    }
+
+    /**
      * Appel du point d'accès `/oauth/token` avec un formulaire complet (code d'autorisation, refresh d'un client web, AR-072).
      * Jamais rejoué : un code ou un refresh token ne sert qu'une fois.
      *

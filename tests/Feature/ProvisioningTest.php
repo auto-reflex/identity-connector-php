@@ -215,3 +215,20 @@ describe('immediate owner (AR-076)', function () {
         expect($this->identity->provisioned())->toBe([]);
     })->with([[null, null], ['a@example.test', PROV_OWNER]]);
 });
+
+describe('organizationLegal (AR-078)', function () {
+    it('reads the legal identity of an organization this product never provisioned', function () {
+        $this->identity->organization('org-hello', 'Hello World', [PROV_OWNER => 'owner'], legal: $this->identity->legalBlock(PROV_SIRET));
+
+        $legal = Identity::client()->organizationLegal('org-hello');
+
+        expect($legal)->toBeInstanceOf(LegalIdentity::class)->and($legal->siret)->toBe(PROV_SIRET)->and($legal->verified)->toBeTrue();
+    });
+
+    it('returns null for an unknown organization, or one without a legal identity', function () {
+        expect(Identity::client()->organizationLegal('org-unknown'))->toBeNull();
+
+        $this->identity->organization('org-club', 'Club', [PROV_OWNER => 'owner']);
+        expect(Identity::client()->organizationLegal('org-club'))->toBeNull();
+    });
+});
