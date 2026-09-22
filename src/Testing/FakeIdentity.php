@@ -595,15 +595,6 @@ final class FakeIdentity
             'legal' => $entry['legal'],
         ]];
 
-        if ($request->method() === 'GET' && str_starts_with($path, '/api/v1/provisioning/organizations/by-id/')) {
-            $id = rawurldecode(substr($path, strlen('/api/v1/provisioning/organizations/by-id/')));
-            $organization = $this->organizations[$id] ?? null;
-
-            return $organization === null
-                ? Http::response(['message' => 'Not Found'], 404)
-                : Http::response(['data' => ['organization_id' => $id, 'legal' => $organization['legal']]]);
-        }
-
         if ($request->method() === 'GET') {
             $reference = rawurldecode(substr($path, strlen('/api/v1/provisioning/organizations/')));
 
@@ -611,6 +602,52 @@ final class FakeIdentity
         }
 
         $data = $request->data();
+
+        // Rattachement d'une organisation déjà possédée (AR-079), au lieu de la créer : pas de SIRET ni de nom à valider ici, une
+        // organisation à rattacher et un propriétaire déjà membre suffisent.
+        if (isset($data['organization_id'])) {
+            $orgId = (string) $data['organization_id'];
+            $organization = $this->organizations[$orgId] ?? null;
+
+            if ($organization === null) {
+                return Http::response(['message' => 'Not Found'], 404);
+            }
+
+            $ownerId = isset($data['owner_user_id']) ? (string) $data['owner_user_id'] : null;
+            $role = $ownerId !== null ? ($organization['members'][$ownerId] ?? null) : null;
+
+            if (! in_array($role, ['owner', 'admin'], true)) {
+                return Http::response(['error' => 'not_a_member', 'message' => 'Not a member.'], 403);
+            }
+
+            $reference = (string) ($data['reference'] ?? '');
+            $existingReference = null;
+
+            foreach ($this->provisioned as $ref => $entry) {
+                if ($entry['organization_id'] === $orgId) {
+                    $existingReference = $ref;
+                    break;
+                }
+            }
+
+            if ($existingReference !== null && $existingReference !== $reference) {
+                return Http::response(['error' => 'already_provisioned', 'message' => 'Already provisioned under another reference.'], 409);
+            }
+
+            $this->provisioned[$reference] = [
+                'organization_id' => $orgId,
+                'slug' => $organization['slug'],
+                'email' => null,
+                'name' => $organization['name'],
+                'locale' => null,
+                'owner' => $ownerId,
+                'sent' => 0,
+                'legal' => $organization['legal'],
+            ];
+
+            return Http::response($resource($reference, $this->provisioned[$reference]));
+        }
+
         $errors = array_filter([
             'reference' => is_string($data['reference'] ?? null) && $data['reference'] !== '' ? null : ['required'],
             'email' => match (true) {

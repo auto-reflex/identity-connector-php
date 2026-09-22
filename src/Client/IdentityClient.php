@@ -202,6 +202,39 @@ class IdentityClient
     }
 
     /**
+     * Rattache une organisation que la personne possède déjà à ce produit, sous cette référence (AR-079), au lieu de la créer :
+     * le SIRET appartient à l'organisation, pas au produit (AR-075), donc `provisionOrganization()` avec ce SIRET échouerait en
+     * `siret_taken` si la personne a déjà une organisation vérifiée à ce SIRET (créée directement chez Identity, ou par un autre
+     * produit). Rien n'est créé ni revérifié : Identity enregistre seulement le lien, après avoir vérifié que `$ownerUserId` est
+     * owner ou admin de cette organisation. Idempotent par référence, comme `provisionOrganization()`.
+     *
+     * @throws IdentityUnavailable
+     * @throws ProvisioningRejected `not_a_member` (403, la personne n'est ni owner ni admin) ou `already_provisioned` (409,
+     *                              l'organisation a déjà une référence, pour un autre produit ou une autre référence)
+     * @throws IdentityRejected 404 si l'organisation n'existe pas
+     */
+    public function adoptOrganization(string $reference, string $organizationId, string $ownerUserId): ProvisionedOrganization
+    {
+        try {
+            $data = $this->serviceRequest('POST', 'organizations:provision', '/api/v1/provisioning/organizations', [
+                'json' => ['reference' => $reference, 'organization_id' => $organizationId, 'owner_user_id' => $ownerUserId],
+            ], retry: true)->json('data');
+        } catch (IdentityRejected $rejected) {
+            if (in_array($rejected->error, ProvisioningRejected::CODES, true)) {
+                throw new ProvisioningRejected($rejected->status, $rejected->getMessage(), $rejected->error, $rejected->body);
+            }
+
+            throw $rejected;
+        }
+
+        if (! is_array($data) || ! isset($data['organization_id'], $data['slug'], $data['reference'], $data['state'])) {
+            throw new IdentityUnavailable('Identity returned an unusable provisioning response.');
+        }
+
+        return ProvisionedOrganization::fromArray($data);
+    }
+
+    /**
      * État d'une organisation provisionnée par ce produit ; `null` si la référence est inconnue.
      *
      * @throws IdentityUnavailable
@@ -220,29 +253,6 @@ class IdentityClient
         }
 
         return is_array($data) && isset($data['organization_id'], $data['slug'], $data['reference'], $data['state']) ? ProvisionedOrganization::fromArray($data) : null;
-    }
-
-    /**
-     * Identité légale d'une organisation par son identifiant (AR-078), que ce produit l'ait provisionnée ou non — une fiche peut se
-     * rattacher à une organisation que la personne possédait déjà (créée directement chez Identity, ou par un autre produit).
-     * `null` : organisation inexistante, ou sans identité légale.
-     *
-     * @throws IdentityUnavailable
-     * @throws IdentityRejected
-     */
-    public function organizationLegal(string $organizationId): ?LegalIdentity
-    {
-        try {
-            $data = $this->serviceRequest('GET', 'organizations:provision', '/api/v1/provisioning/organizations/by-id/'.rawurlencode($organizationId))->json('data');
-        } catch (IdentityRejected $rejected) {
-            if ($rejected->status === 404) {
-                return null;
-            }
-
-            throw $rejected;
-        }
-
-        return is_array($data) ? LegalIdentity::fromArray(isset($data['legal']) && is_array($data['legal']) ? $data['legal'] : null) : null;
     }
 
     /**

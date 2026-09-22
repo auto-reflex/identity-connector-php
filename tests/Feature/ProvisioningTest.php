@@ -216,19 +216,37 @@ describe('immediate owner (AR-076)', function () {
     })->with([[null, null], ['a@example.test', PROV_OWNER]]);
 });
 
-describe('organizationLegal (AR-078)', function () {
-    it('reads the legal identity of an organization this product never provisioned', function () {
+describe('adoptOrganization (AR-079)', function () {
+    it('attaches an organization the owner already has, without provisioning a new one', function () {
         $this->identity->organization('org-hello', 'Hello World', [PROV_OWNER => 'owner'], legal: $this->identity->legalBlock(PROV_SIRET));
 
-        $legal = Identity::client()->organizationLegal('org-hello');
+        $organization = Identity::client()->adoptOrganization('pro-1', 'org-hello', PROV_OWNER);
 
-        expect($legal)->toBeInstanceOf(LegalIdentity::class)->and($legal->siret)->toBe(PROV_SIRET)->and($legal->verified)->toBeTrue();
+        expect($organization)->toBeInstanceOf(ProvisionedOrganization::class)
+            ->and($organization->organizationId)->toBe('org-hello')
+            ->and($organization->isActive())->toBeTrue()
+            ->and($organization->ownerUserId)->toBe(PROV_OWNER)
+            ->and($organization->legal->siret)->toBe(PROV_SIRET);
     });
 
-    it('returns null for an unknown organization, or one without a legal identity', function () {
-        expect(Identity::client()->organizationLegal('org-unknown'))->toBeNull();
+    it('lets an admin attach it too, but refuses a simple member', function () {
+        $this->identity->organization('org-hello', 'Hello World', [PROV_OWNER => 'owner', 'admin-1' => 'admin', 'member-1' => 'member'], legal: $this->identity->legalBlock(PROV_SIRET));
 
-        $this->identity->organization('org-club', 'Club', [PROV_OWNER => 'owner']);
-        expect(Identity::client()->organizationLegal('org-club'))->toBeNull();
+        expect(Identity::client()->adoptOrganization('pro-1', 'org-hello', 'admin-1')->isActive())->toBeTrue();
+
+        try {
+            Identity::client()->adoptOrganization('pro-2', 'org-hello', 'member-1');
+            $this->fail('A rejection was expected.');
+        } catch (ProvisioningRejected $rejected) {
+            expect($rejected->error)->toBe('not_a_member');
+        }
+    });
+
+    it('refuses an organization already attached under another reference, but replays the same one', function () {
+        $this->identity->organization('org-hello', 'Hello World', [PROV_OWNER => 'owner'], legal: $this->identity->legalBlock(PROV_SIRET));
+        Identity::client()->adoptOrganization('pro-1', 'org-hello', PROV_OWNER);
+
+        expect(fn () => Identity::client()->adoptOrganization('pro-2', 'org-hello', PROV_OWNER))->toThrow(ProvisioningRejected::class);
+        expect(Identity::client()->adoptOrganization('pro-1', 'org-hello', PROV_OWNER)->isActive())->toBeTrue();
     });
 });
