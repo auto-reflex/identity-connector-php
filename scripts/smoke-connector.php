@@ -21,7 +21,6 @@ use Symfony\Component\Process\Process;
 
 const IDENTITY_URL = 'http://localhost:8100';
 const WORKBENCH_URL = 'http://127.0.0.1:8110';
-const WEBHOOK_SECRET = 'smoke-webhook-secret-0123456789abcdef';
 const SERVICE_SECRET = 'smoke-service-secret-0123456789abcdef';
 
 $connectorDir = dirname(__DIR__);
@@ -55,8 +54,6 @@ if ($identityDir === false || ! is_file($identityDir.'/artisan')) {
 }
 
 $identityEnv = [
-    'IDENTITY_WEBHOOK_AUTODONUTS_URL' => WORKBENCH_URL.'/identity/webhooks',
-    'IDENTITY_WEBHOOK_AUTODONUTS_SECRET' => WEBHOOK_SECRET,
     'PHP_CLI_SERVER_WORKERS' => '4',
 ];
 
@@ -126,6 +123,17 @@ echo "Préparation : Identity ({$identityDir}) et workbench\n";
 $run([PHP_BINARY, 'artisan', 'migrate', '--force'], $identityDir, $identityEnv);
 $run([PHP_BINARY, 'artisan', 'db:seed', '--class=Database\\Seeders\\ClientsSeeder', '--force'], $identityDir, $identityEnv);
 $tinker('App\Modules\Auth\OAuth\OAuthClient::query()->findOrFail("autodonuts-api-service")->forceFill(["secret" => "'.SERVICE_SECRET.'"])->save(); echo json_encode(["ok" => true]);');
+
+// Webhooks (AR-087) : l'adresse de réception d'AutoDonuts pointe vers le workbench le temps du smoke, comme la console le ferait ;
+// l'ancienne valeur est remise à la fin. Aucun secret : Identity signe avec sa clé, le workbench vérifie avec le JWKS.
+$previousOrigin = $tinker('$row = App\Modules\Auth\Models\ApplicationOrigin::query()->where("application", "autodonuts")->where("origin", "api")->first(); echo json_encode(["urls" => $row?->urls]);');
+$tinker('App\Modules\Auth\Models\ApplicationOrigin::query()->updateOrCreate(["application" => "autodonuts", "origin" => "api"], ["urls" => ["'.WORKBENCH_URL.'"]]); echo json_encode(["ok" => true]);');
+register_shutdown_function(function () use ($tinker, $previousOrigin): void {
+    $restore = $previousOrigin['urls'] === null
+        ? 'App\Modules\Auth\Models\ApplicationOrigin::query()->where("application", "autodonuts")->where("origin", "api")->delete();'
+        : 'App\Modules\Auth\Models\ApplicationOrigin::query()->updateOrCreate(["application" => "autodonuts", "origin" => "api"], ["urls" => '.var_export($previousOrigin['urls'], true).']);';
+    $tinker($restore.' echo json_encode(["ok" => true]);');
+});
 
 touch($connectorDir.'/workbench/database/smoke.sqlite');
 $run([PHP_BINARY, 'vendor/bin/testbench', 'migrate:fresh', '--force'], $connectorDir);

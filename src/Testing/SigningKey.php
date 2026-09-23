@@ -40,11 +40,13 @@ final class SigningKey
     }
 
     /**
+     * Signe comme Identity : un access token (`typ` = `at+jwt`) par défaut.
+     *
      * @param  array<string, mixed>  $claims
-     * @param  array<string, mixed>  $header  en-têtes supplémentaires ou remplacés
+     * @param  array<string, mixed>  $header  en-têtes supplémentaires ou remplacés (ex. `typ` d'un webhook)
      */
     public function sign(array $claims, array $header = []): string
     {
-        return JWT::encode($claims, $this->privatePem, 'RS256', $this->kid, $header);
+        return JWT::encode($claims, $this->privatePem, 'RS256', $this->kid, ['typ' => 'at+jwt', ...$header]);
     }
 }

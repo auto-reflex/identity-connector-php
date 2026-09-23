@@ -2,6 +2,7 @@
 
 use AutoGteck\IdentityConnector\Events\AccountReinstated;
 use AutoGteck\IdentityConnector\Events\AccountSuspended;
+use AutoGteck\IdentityConnector\Testing\SigningKey;
 use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
@@ -84,9 +85,32 @@ describe('refuses with 401', function () {
         postWebhook($this, str_replace(WH_USER, '01J0OTHER0000000000000000B', $body), $server)->assertUnauthorized();
     });
 
-    it('a signature made with another secret', function () {
+    it('a token signed by a key Identity does not publish', function () {
         ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER);
-        $server['HTTP_IDENTITY_SIGNATURE'] = WebhookSignature::header($body, 'attacker-secret-0123456789abcdefghij', Carbon::now()->getTimestamp());
+        $now = Carbon::now()->getTimestamp();
+        $server['HTTP_IDENTITY_SIGNATURE'] = SigningKey::generate('test-key-1')->sign(
+            ['iss' => 'https://identity.test', 'aud' => 'autotrackly-api', 'iat' => $now, 'exp' => $now + 300, 'body' => WebhookSignature::digest($body)],
+            ['typ' => WebhookSignature::TYPE],
+        );
+
+        postWebhook($this, $body, $server)->assertUnauthorized();
+    });
+
+    it('a webhook meant for another product', function () {
+        $body = $this->identity->webhook('account.suspended', WH_USER)['body'];
+
+        postWebhook($this, $body, $this->identity->signedWebhook($body, claims: ['aud' => 'autodonuts-api']))->assertUnauthorized();
+    });
+
+    it('another issuer', function () {
+        $body = $this->identity->webhook('account.suspended', WH_USER)['body'];
+
+        postWebhook($this, $body, $this->identity->signedWebhook($body, claims: ['iss' => 'https://evil.test']))->assertUnauthorized();
+    });
+
+    it('an access token presented as a signature', function () {
+        $body = $this->identity->webhook('account.suspended', WH_USER)['body'];
+        $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => $this->identity->tokenFor(WH_USER, claims: ['body' => WebhookSignature::digest($body)])];
 
         postWebhook($this, $body, $server)->assertUnauthorized();
     });
@@ -97,8 +121,8 @@ describe('refuses with 401', function () {
         postWebhook($this, $body, ['CONTENT_TYPE' => 'application/json'])->assertUnauthorized();
     });
 
-    it('a stale timestamp: a captured webhook cannot be replayed later', function () {
-        ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER, timestamp: Carbon::now()->getTimestamp() - 301);
+    it('an expired token, beyond the clock tolerance: a captured webhook cannot be replayed later', function () {
+        ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER, timestamp: Carbon::now()->getTimestamp() - 601);
 
         postWebhook($this, $body, $server)->assertUnauthorized();
     });
@@ -116,14 +140,20 @@ it('gives nothing away in the refusal', function () {
     expect(postWebhook($this, $body, ['CONTENT_TYPE' => 'application/json'])->json())->toBe(['error' => 'invalid_signature']);
 });
 
-it('accepts the previous secret during a rotation, and refuses it once removed', function () {
-    config(['identity-connector.webhooks.secrets' => ['new-secret-0123456789abcdefghijklmnopq', 'test-webhook-secret-0123456789abcdef0123']]);
-    ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER);
-    postWebhook($this, $body, $server)->assertNoContent();
+it('accepts a webhook signed just before a key rotation, and one signed by the new key', function () {
+    ['body' => $before, 'server' => $signedBefore] = $this->identity->webhook('account.suspended', WH_USER);
+    $this->identity->rotateKey();
+    ['body' => $after, 'server' => $signedAfter] = $this->identity->webhook('account.reinstated', WH_USER);
 
-    config(['identity-connector.webhooks.secrets' => ['new-secret-0123456789abcdefghijklmnopq']]);
+    postWebhook($this, $before, $signedBefore)->assertNoContent();
+    postWebhook($this, $after, $signedAfter)->assertNoContent();
+});
+
+it('answers 503 when the keys of Identity cannot be fetched, so that Identity delivers again', function () {
     ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER);
-    postWebhook($this, $body, $server)->assertUnauthorized();
+    $this->identity->goDown();
+
+    postWebhook($this, $body, $server)->assertStatus(503);
 });
 
 it('processes an event once: a redelivery is acknowledged, not replayed', function () {
@@ -166,7 +196,7 @@ describe('forward compatibility', function () {
         Event::fake([AccountSuspended::class]);
         Log::spy();
         $body = json_encode(['id' => '01J0EVENT0000000000000000A', 'type' => 'account.suspended', 'version' => 2, 'occurred_at' => now()->toIso8601String(), 'data' => ['user_id' => WH_USER]]);
-        $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, 'test-webhook-secret-0123456789abcdef0123', now()->getTimestamp())];
+        $server = $this->identity->signedWebhook($body);
 
         postWebhook($this, $body, $server)->assertStatus(202);
 
@@ -177,7 +207,7 @@ describe('forward compatibility', function () {
 
 describe('refuses with 400 a signed but malformed event', function () {
     it('whatever is wrong', function (string $body) {
-        $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, 'test-webhook-secret-0123456789abcdef0123', now()->getTimestamp())];
+        $server = $this->identity->signedWebhook($body);
 
         postWebhook($this, $body, $server)->assertStatus(400);
     })->with([
@@ -193,7 +223,7 @@ describe('refuses with 400 a signed but malformed event', function () {
 
 it('refuses an oversized body before reading it', function () {
     $body = json_encode(['padding' => str_repeat('x', 20000)]);
-    $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, 'test-webhook-secret-0123456789abcdef0123', now()->getTimestamp())];
+    $server = $this->identity->signedWebhook($body);
 
     postWebhook($this, $body, $server)->assertStatus(413);
 });
@@ -201,11 +231,4 @@ it('refuses an oversized body before reading it', function () {
 it('is served on a route without session or CSRF, and only by POST', function () {
     $this->get('/identity/webhooks')->assertStatus(405);
     expect(route('identity-connector.webhooks', absolute: false))->toBe('/identity/webhooks');
-});
-
-it('fails closed while no secret is configured', function () {
-    config(['identity-connector.webhooks.secrets' => []]);
-    ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER);
-
-    postWebhook($this, $body, $server)->assertUnauthorized();
 });

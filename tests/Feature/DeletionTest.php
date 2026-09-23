@@ -9,7 +9,6 @@ use AutoGteck\IdentityConnector\Events\AccountDeletionRequested;
 use AutoGteck\IdentityConnector\Events\OrganizationDeleted;
 use AutoGteck\IdentityConnector\Facades\Identity;
 use AutoGteck\IdentityConnector\IdentityManager;
-use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
@@ -68,7 +67,7 @@ describe('events', function () {
     it('refuses a deletion request without a date, and an organization event without organization', function () {
         $body = fn (array $envelope) => json_encode(['id' => 'a', 'version' => 1, 'occurred_at' => now()->toIso8601String(), ...$envelope]);
         $post = function (string $body) {
-            $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, 'test-webhook-secret-0123456789abcdef0123', now()->getTimestamp())];
+            $server = $this->identity->signedWebhook($body);
 
             return $this->call('POST', '/identity/webhooks', [], [], [], $server, $body);
         };

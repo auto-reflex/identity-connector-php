@@ -107,7 +107,12 @@ describe('rejects', function () {
         $pem = openssl_pkey_new(['private_key_bits' => 2048]);
         openssl_pkey_export($pem, $private);
 
-        expect(fn () => $this->verifier->verify(JWT::encode(claims(), $private, 'RS256')))->toThrow(InvalidAccessToken::class, 'Missing key id.');
+        expect(fn () => $this->verifier->verify(JWT::encode(claims(), $private, 'RS256', head: ['typ' => 'at+jwt'])))->toThrow(InvalidAccessToken::class, 'Missing key id.');
+    });
+
+    it('a token of Identity made for another use, such as a webhook signature (AR-087)', function () {
+        expect(fn () => $this->verifier->verify($this->key->sign(claims(), ['typ' => 'identity-webhook+jwt'])))->toThrow(InvalidAccessToken::class, 'Unexpected token type.')
+            ->and(fn () => $this->verifier->verify($this->key->sign(claims(), ['typ' => 'JWT'])))->toThrow(InvalidAccessToken::class, 'Unexpected token type.');
     });
 
     it('an unknown key id', function () {

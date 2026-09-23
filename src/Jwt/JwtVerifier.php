@@ -15,6 +15,8 @@ final class JwtVerifier
 {
     public const ALGORITHM = 'RS256';
 
+    public const TYPE = 'at+jwt';
+
     public function __construct(
         private readonly KeySetProvider $keys,
         private readonly string $issuer,
@@ -101,6 +103,11 @@ final class JwtVerifier
 
         if (! is_array($header) || ($header['alg'] ?? null) !== self::ALGORITHM) {
             throw new InvalidAccessToken('Unexpected algorithm.');
+        }
+
+        // Un jeton d'Identity d'un autre usage (signature de webhook, AR-087) n'est jamais un access token.
+        if (($header['typ'] ?? null) !== self::TYPE) {
+            throw new InvalidAccessToken('Unexpected token type.');
         }
 
         return is_string($header['kid'] ?? null) && $header['kid'] !== '' ? $header['kid'] : null;

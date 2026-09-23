@@ -7,7 +7,6 @@ use AutoGteck\IdentityConnector\Events\VehicleDeleted;
 use AutoGteck\IdentityConnector\Events\VehicleUnlinked;
 use AutoGteck\IdentityConnector\Facades\Identity;
 use AutoGteck\IdentityConnector\IdentityManager;
-use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -219,7 +218,7 @@ describe('events', function () {
 
     it('refuses a vehicle event that lacks its identifiers', function (string $type, array $data) {
         $body = json_encode(['id' => 'a', 'type' => $type, 'version' => 1, 'occurred_at' => now()->toIso8601String(), 'data' => $data]);
-        $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, 'test-webhook-secret-0123456789abcdef0123', now()->getTimestamp())];
+        $server = $this->identity->signedWebhook($body);
 
         $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertStatus(400);
     })->with([

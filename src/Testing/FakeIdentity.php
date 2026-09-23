@@ -18,7 +18,6 @@ use Illuminate\Support\Str;
 final class FakeIdentity
 {
     /** Secret de webhook des tests : `install()` le configure, `webhook()` signe avec lui. */
-    public const WEBHOOK_SECRET = 'test-webhook-secret-0123456789abcdef0123';
 
     /** @var list<SigningKey> */
     private array $published = [];
@@ -103,7 +102,6 @@ final class FakeIdentity
         Config::set('identity-connector.audience', $audience);
         Config::set('identity-connector.url', null);
         Config::set('identity-connector.jwks_url', null);
-        Config::set('identity-connector.webhooks.secrets', [self::WEBHOOK_SECRET]);
 
         // Connexion web : de quoi fonctionner sans configuration ; une valeur déjà posée par l'application (son `.env` de test) est gardée.
         foreach (['client_id' => 'test-web-client', 'client_secret' => 'test-web-secret', 'scope' => 'test:access'] as $key => $default) {
@@ -374,13 +372,32 @@ final class FakeIdentity
             'data' => $data,
         ], JSON_THROW_ON_ERROR);
 
-        return [
-            'body' => $body,
-            'server' => [
-                'CONTENT_TYPE' => 'application/json',
-                'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, self::WEBHOOK_SECRET, $timestamp ?? Carbon::now()->getTimestamp()),
-            ],
-        ];
+        return ['body' => $body, 'server' => $this->signedWebhook($body, $timestamp)];
+    }
+
+    /**
+     * En-têtes d'un webhook signé comme Identity le fait (AR-087), pour un corps quelconque : JWT de la clé du faux Identity,
+     * destiné à ce produit, lié au corps. `$timestamp` : heure de signature (par défaut maintenant) ; `$claims` et `$header`
+     * remplacent des valeurs pour tester un refus.
+     *
+     * @param  array<string, mixed>  $claims
+     * @param  array<string, mixed>  $header
+     * @return array<string, string> à passer comme `$server` d'une requête de test
+     */
+    public function signedWebhook(string $body, ?int $timestamp = null, array $claims = [], array $header = []): array
+    {
+        $now = $timestamp ?? Carbon::now()->getTimestamp();
+        $jwt = $this->key->sign([
+            'iss' => $this->issuer,
+            'aud' => $this->audience,
+            'jti' => (string) Str::ulid(),
+            'iat' => $now,
+            'exp' => $now + 300,
+            'body' => WebhookSignature::digest($body),
+            ...$claims,
+        ], ['typ' => WebhookSignature::TYPE, ...$header]);
+
+        return ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => $jwt];
     }
 
     public function userInfoCalls(): int

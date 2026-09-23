@@ -8,7 +8,6 @@ env:
   CACHE_STORE: file
   IDENTITY_ISSUER: http://localhost:8100
   IDENTITY_AUDIENCE: autodonuts-api
-  IDENTITY_WEBHOOK_SECRET: smoke-webhook-secret-0123456789abcdef
   IDENTITY_SERVICE_CLIENT_ID: autodonuts-api-service
   IDENTITY_SERVICE_CLIENT_SECRET: smoke-service-secret-0123456789abcdef
   IDENTITY_JWKS_RELOAD_SECONDS: 1

@@ -17,6 +17,7 @@ use AutoGteck\IdentityConnector\Web\WebLogin;
 use AutoGteck\IdentityConnector\Web\WebLoginClient;
 use AutoGteck\IdentityConnector\Web\WebRoutes;
 use AutoGteck\IdentityConnector\Web\WebSession;
+use AutoGteck\IdentityConnector\Webhooks\WebhookVerifier;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Encryption\StringEncrypter;
@@ -50,6 +51,13 @@ class IdentityServiceProvider extends ServiceProvider
                 timeoutSeconds: (int) $config->get('identity-connector.http.timeout'),
             );
         });
+
+        $this->app->bind(WebhookVerifier::class, fn ($app) => new WebhookVerifier(
+            $app->make(KeySetProvider::class),
+            $this->required('issuer'),
+            $this->required('audience'),
+            (int) $app['config']->get('identity-connector.webhooks.tolerance'),
+        ));
 
         $this->app->singleton(JwtVerifier::class, fn ($app) => new JwtVerifier(
             $app->make(KeySetProvider::class),

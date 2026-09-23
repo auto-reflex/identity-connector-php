@@ -10,7 +10,6 @@ use AutoGteck\IdentityConnector\Client\RegistryUnavailable;
 use AutoGteck\IdentityConnector\Events\OrganizationOwnerJoined;
 use AutoGteck\IdentityConnector\Events\OrganizationUpdated;
 use AutoGteck\IdentityConnector\Facades\Identity;
-use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
 
@@ -78,7 +77,7 @@ it('surfaces validation errors as a typed rejection', function () {
 
 it('refuses an owner event without user or reference', function () {
     $body = json_encode(['id' => 'a', 'type' => 'organization.owner_joined', 'version' => 1, 'occurred_at' => now()->toIso8601String(), 'data' => ['organization_id' => '01J0ORG0000000000000000001']]);
-    $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_IDENTITY_SIGNATURE' => WebhookSignature::header($body, 'test-webhook-secret-0123456789abcdef0123', now()->getTimestamp())];
+    $server = $this->identity->signedWebhook($body);
 
     $this->call('POST', '/identity/webhooks', [], [], [], $server, $body)->assertStatus(400);
 });
