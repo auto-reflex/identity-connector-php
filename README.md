@@ -42,7 +42,6 @@ Le service provider et la façade `Identity` sont découverts automatiquement. P
 | `IDENTITY_URL` | URL de l'API si elle diffère de l'émetteur (réseau interne) |
 | `IDENTITY_JWKS_URL` | par défaut `{issuer}/.well-known/jwks.json` ; HTTPS exigé hors local et testing |
 | `IDENTITY_SERVICE_CLIENT_ID` / `_SECRET` | client de service (`autodonuts-api-service`…), pour `accountStatus()` |
-| `IDENTITY_WEBHOOK_SECRET` | secret du webhook (32 caractères minimum), `IDENTITY_WEBHOOK_PREVIOUS_SECRET` pendant une rotation |
 
 Le reste (durées de cache, timeouts, tolérance d'horloge, chemin du webhook) est dans `config/identity-connector.php`.
 Les secrets d'un client confidentiel (Map web) se déclarent dans `exchange.client_secrets`.
@@ -176,8 +175,13 @@ reprise sur les lectures, aucune sur les demandes de token. Aucun token n'est jo
 
 ## Recevoir les webhooks
 
-Le connecteur expose `POST /identity/webhooks` (chemin configurable). Il vérifie la signature sur le corps brut,
-l'horodatage (±5 min), écarte les rejeux et déclenche des événements Laravel locaux :
+Le connecteur expose `POST /identity/webhooks` (chemin configurable). Depuis la 0.9 (AR-087), **aucun secret n'est à
+configurer** : Identity signe chaque webhook avec sa clé (en-tête `Identity-Signature` = JWT RS256 de type
+`identity-webhook+jwt`), et le connecteur le vérifie avec le JWKS qu'il télécharge déjà pour les access tokens. Il contrôle
+l'émetteur, l'audience (un webhook destiné à un autre produit est refusé), la validité (5 min, plus la tolérance d'horloge)
+et l'empreinte du corps brut. Il écarte les rejeux et déclenche des événements Laravel locaux. Si les clés d'Identity sont
+injoignables, il répond 503 et Identity réessaie. L'adresse de réception se saisit dans la console d'Identity
+(origine `api` de l'application).
 
 ```php
 Event::listen(AutoGteck\IdentityConnector\Events\AccountSuspended::class, function ($event) {
@@ -318,5 +322,7 @@ token, statut en service à service, rotation de clé, suspension et réactivati
 `identity/` à côté, sa base PostgreSQL locale, Mailpit sur `:8028`. Il migre la base locale d'Identity et fixe le
 secret du client de service `autodonuts-api-service` (valeurs de développement de `testbench.yaml`).
 
-Le vecteur de référence de la signature des webhooks (`tests/Unit/WebhookSignatureTest.php`) est le même que celui
-d'Identity (`docs/openapi.yaml`) : les deux dépôts doivent rester d'accord.
+L'empreinte du corps signée dans les webhooks (`WebhookSignature::digest`, SHA-256 en base64url sans remplissage) est
+calculée de la même façon par Identity (`App\Webhooks\WebhookSigner::digest`) : les deux dépôts doivent rester d'accord.
+En test, `$identity->webhook(...)` renvoie un webhook signé par la clé du faux Identity, et `$identity->signedWebhook($body)`
+signe un corps quelconque.
