@@ -124,15 +124,14 @@ $run([PHP_BINARY, 'artisan', 'migrate', '--force'], $identityDir, $identityEnv);
 $run([PHP_BINARY, 'artisan', 'db:seed', '--class=Database\\Seeders\\ClientsSeeder', '--force'], $identityDir, $identityEnv);
 $tinker('App\Modules\Auth\OAuth\OAuthClient::query()->findOrFail("autodonuts-api-service")->forceFill(["secret" => "'.SERVICE_SECRET.'"])->save(); echo json_encode(["ok" => true]);');
 
-// Webhooks (AR-087) : l'adresse de réception d'AutoDonuts pointe vers le workbench le temps du smoke, comme la console le ferait ;
-// l'ancienne valeur est remise à la fin. Aucun secret : Identity signe avec sa clé, le workbench vérifie avec le JWKS.
-$previousOrigin = $tinker('$row = App\Modules\Auth\Models\ApplicationOrigin::query()->where("application", "autodonuts")->where("origin", "api")->first(); echo json_encode(["urls" => $row?->urls]);');
-$tinker('App\Modules\Auth\Models\ApplicationOrigin::query()->updateOrCreate(["application" => "autodonuts", "origin" => "api"], ["urls" => ["'.WORKBENCH_URL.'"]]); echo json_encode(["ok" => true]);');
-register_shutdown_function(function () use ($tinker, $previousOrigin): void {
-    $restore = $previousOrigin['urls'] === null
-        ? 'App\Modules\Auth\Models\ApplicationOrigin::query()->where("application", "autodonuts")->where("origin", "api")->delete();'
-        : 'App\Modules\Auth\Models\ApplicationOrigin::query()->updateOrCreate(["application" => "autodonuts", "origin" => "api"], ["urls" => '.var_export($previousOrigin['urls'], true).']);';
-    $tinker($restore.' echo json_encode(["ok" => true]);');
+// Webhooks (AR-086, AR-087) : le temps du smoke, seul AutoDonuts reçoit les webhooks, sur le workbench (les autres applications ne
+// tournent pas et bloqueraient la clôture de la suppression du compte, faute d'accusé). Aucun secret : Identity signe avec sa clé,
+// le workbench vérifie avec le JWKS. Les adresses saisies dans la console locale sont remises à la fin.
+$savedOrigins = $tinker('echo json_encode(App\\Modules\\Auth\\Models\\ApplicationOrigin::query()->get(["application", "origin", "urls"])->toArray());');
+$tinker('use App\\Modules\\Auth\\Models\\ApplicationOrigin; ApplicationOrigin::query()->delete(); ApplicationOrigin::query()->create(["application" => "autodonuts", "origin" => "api", "urls" => ["'.WORKBENCH_URL.'"]]); echo json_encode(["ok" => true]);');
+register_shutdown_function(function () use ($tinker, $run, $identityDir, $identityEnv, $savedOrigins): void {
+    $tinker('use App\\Modules\\Auth\\Models\\ApplicationOrigin; ApplicationOrigin::query()->delete(); foreach (json_decode(base64_decode("'.base64_encode(json_encode($savedOrigins)).'"), true) as $row) { ApplicationOrigin::query()->create($row); } echo json_encode(["ok" => true]);');
+    $run([PHP_BINARY, 'artisan', 'identity:clients:sync'], $identityDir, $identityEnv);
 });
 
 touch($connectorDir.'/workbench/database/smoke.sqlite');
