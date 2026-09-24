@@ -99,7 +99,7 @@ final class FakeVehicles
         if ($service) {
             $reader = (string) ($request->header('X-Reader')[0] ?? '');
 
-            if (! in_array($reader, ['member', 'anonymous'], true)) {
+            if (! in_array($reader, ['member', 'anonymous', 'product'], true)) {
                 return Http::response(['error' => 'invalid_reader'], 400);
             }
         }
@@ -307,6 +307,9 @@ final class FakeVehicles
             if (! in_array('vehicles:sensitive', $context['scopes'], true)) {
                 $groups = array_values(array_diff($groups, ['sensitive']));
             }
+        } elseif ($context['person'] === null && $context['reader'] === 'product') {
+            // Le produit lui-même, pour les véhicules liés à lui (AR-093) : tout ce que le lien accorde, jamais `sensitive`.
+            $groups = $link === null ? [] : array_values(array_diff(array_intersect($ceiling, $link['groups']), ['sensitive']));
         } else {
             $visible = $link !== null && match ($link['visibility']) {
                 'public' => true,

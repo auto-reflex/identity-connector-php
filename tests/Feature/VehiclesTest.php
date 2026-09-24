@@ -127,6 +127,24 @@ describe('reading the vehicle of a third party, service to service', function ()
     });
 });
 
+describe('reading the vehicles linked to the product, without the person (AR-093)', function () {
+    it('gives the groups of the link whatever the visibility, never the sensitive group', function () {
+        $vehicle = Identity::vehicleClient()->linkedGet(V_ID, ['identity', 'usage', 'sensitive']);
+
+        expect($vehicle->label())->toBe('Peugeot 205 GTI (1991)')->and($vehicle->usage()['mileage_km'])->toBe(182000)->and($vehicle->sensitive())->toBeNull();
+    });
+
+    it('reads a batch, leaving out the vehicles not linked to the product', function () {
+        $this->vehicles->add('01J0VEHICLE0000000000000A3', V_OTHER, ['identity' => ['make' => 'Lancia', 'model' => 'Delta']], ['autotrackly' => ['groups' => ['identity']]]);
+
+        $vehicles = Identity::vehicleClient()->linkedMany([V_ID, '01J0VEHICLE0000000000000A3']);
+
+        expect(array_map(fn ($vehicle) => $vehicle->id, $vehicles))->toBe([V_ID])
+            ->and(Identity::vehicleClient()->linkedGet('01J0VEHICLE0000000000000A3'))->toBeNull()
+            ->and(Identity::vehicleClient()->linkedMany([]))->toBe([]);
+    });
+});
+
 describe('the short cache', function () {
     it('serves a repeated read from the cache, then reads again once it has expired', function () {
         $headers = vehicleHeaders($this);

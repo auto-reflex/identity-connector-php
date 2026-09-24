@@ -254,6 +254,7 @@ $created = Identity::vehicles()->create(['identity' => ['make' => 'Peugeot', 'mo
 $updated = Identity::vehicles()->update($id, ['usage' => ['mileage_km' => 183000]], $vehicle->version);   // IdentityRejected 412 si périmé
 Identity::vehicles()->link($id, ['identity', 'specs'], 'public');       // consentement : les groupes que ce produit lira
 Identity::vehicleClient()->publicMany($ids, reader: 'anonymous');      // tiers, en service à service, avec le lecteur déclaré
+Identity::vehicleClient()->linkedMany($ids);                          // véhicules liés à ce produit, sans la personne (tâches de fond), jamais sensitive (AR-093)
 ```
 
 - **Groupes** : un `Vehicle` ne porte que les groupes accordés (`identity`, `specs`, `media`, `usage`, `sensitive`) : `$vehicle->has('usage')`.

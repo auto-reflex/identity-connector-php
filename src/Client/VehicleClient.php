@@ -119,6 +119,52 @@ class VehicleClient
     }
 
     /**
+     * Un véhicule lié à ce produit, lu par le produit lui-même sans la personne (tâches de fond, AR-093) : les groupes que le lien
+     * accorde, quelle que soit la visibilité, jamais `sensitive`. `null` si le véhicule n'existe pas ou n'est plus lié à ce produit.
+     * Le cache de service n'est pas invalidé par les écritures d'une personne : une lecture peut avoir jusqu'à `ttlSeconds` de retard.
+     *
+     * @param  list<string>|null  $fields
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function linkedGet(string $id, ?array $fields = null): ?Vehicle
+    {
+        $data = $this->cached($this->serviceKey('one:'.$id, 'product', $fields), $fields, function () use ($id, $fields): ?Response {
+            try {
+                return $this->client->serviceRequest('GET', 'vehicles:read', '/api/v1/vehicles/'.rawurlencode($id), $this->query($fields), ['X-Reader' => 'product']);
+            } catch (IdentityRejected $rejected) {
+                return $rejected->status === 404 ? null : throw $rejected;
+            }
+        });
+
+        return $data === null ? null : Vehicle::fromArray($data['data'], $data['stale']);
+    }
+
+    /**
+     * Des véhicules liés à ce produit, par lot (50 au plus), lus par le produit lui-même : seuls ceux encore liés sont renvoyés.
+     *
+     * @param  list<string>  $ids
+     * @param  list<string>|null  $fields
+     * @return list<Vehicle>
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function linkedMany(array $ids, ?array $fields = null): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $data = $this->cached($this->serviceKey('many:'.implode(',', $ids), 'product', $fields), $fields, fn () => $this->client->serviceRequest(
+            'GET', 'vehicles:read', '/api/v1/vehicles', ['query' => ['ids' => implode(',', $ids)] + $this->query($fields)['query']], ['X-Reader' => 'product'],
+        ));
+
+        return $this->vehicles($data);
+    }
+
+    /**
      * Crée un véhicule (garage, ou organisation avec `owner`) et, avec `link`, le lie à ce produit.
      *
      * @param  array<string, mixed>  $data  champs groupés : `identity`, `specs`, `usage`, `sensitive`, `owner`, `link`

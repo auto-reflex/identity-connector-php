@@ -73,6 +73,14 @@ final class Vehicle
     /**
      * @return array<string, mixed>|null
      */
+    public function media(): ?array
+    {
+        return $this->group('media');
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
     public function usage(): ?array
     {
         return $this->group('usage');
