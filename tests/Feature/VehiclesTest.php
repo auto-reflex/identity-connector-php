@@ -69,6 +69,13 @@ describe('the garage and a vehicle, for the connected person', function () {
         expect($created['version'])->toBe(1)->and($created['groups']['identity']['make'])->toBe('Renault')->and($garage)->toContain($created['id']);
     });
 
+    it('refuses a VIN already in the garage of the person, with the vehicle that has it', function () {
+        $this->postJson('/api/vehicles', ['identity' => ['make' => 'Peugeot', 'model' => '205'], 'sensitive' => ['vin' => 'VF3ABCDEFGH123456']], vehicleHeaders($this))
+            ->assertStatus(409)->assertJson(['error' => 'duplicate_vehicle', 'existing_vehicle_id' => V_ID]);
+
+        $this->postJson('/api/vehicles', ['identity' => ['make' => 'Peugeot', 'model' => '205'], 'sensitive' => ['vin' => 'VF3ABCDEFGH123456']], vehicleHeaders($this, V_OTHER))->assertCreated();
+    });
+
     it('updates with the version read, and refuses a stale version with the current one', function () {
         $updated = $this->patchJson('/api/vehicles/'.V_ID, ['version' => 1, 'data' => ['specs' => ['color' => 'Bleu']]], vehicleHeaders($this))->assertOk();
         expect($updated->json('data.version'))->toBe(2)->and($updated->json('data.groups.specs.color'))->toBe('Bleu');

@@ -10,8 +10,9 @@ use Illuminate\Support\Str;
 
 /**
  * Les véhicules du faux Identity : mêmes formes, mêmes groupes, même visibilité et mêmes refus de contrôle de version que le vrai service
- * (AR-058, AR-059), pour tester un produit sans Identity. Il ne valide PAS les champs (VIN, années, doublons, règles du kilométrage) :
- * ces règles se vérifient contre le vrai service (`scripts/smoke-connector.php`).
+ * (AR-058, AR-059), pour tester un produit sans Identity. Il refuse comme lui un VIN déjà présent dans le garage de la personne (409
+ * `duplicate_vehicle`), mais ne valide PAS les champs (VIN, années, règles du kilométrage) : ces règles se vérifient contre le vrai
+ * service (`scripts/smoke-connector.php`).
  */
 final class FakeVehicles
 {
@@ -181,6 +182,14 @@ final class FakeVehicles
 
         if (! isset($body['identity']['make'], $body['identity']['model'])) {
             return Http::response(['error' => 'validation_failed', 'errors' => ['identity' => ['make and model are required.']]], 422);
+        }
+
+        $vin = $body['sensitive']['vin'] ?? null;
+
+        foreach ($vin === null ? [] : $this->vehicles as $existingId => $vehicle) {
+            if ($vehicle['owner'] === $context['person'] && ($vehicle['data']['sensitive']['vin'] ?? null) === $vin) {
+                return Http::response(['error' => 'duplicate_vehicle', 'existing_vehicle_id' => $existingId], 409);
+            }
         }
 
         $id = strtolower((string) Str::ulid());
