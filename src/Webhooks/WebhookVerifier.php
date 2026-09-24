@@ -19,7 +19,7 @@ final class WebhookVerifier
         private readonly KeySetProvider $keys,
         private readonly string $issuer,
         private readonly string $audience,
-        private readonly int $toleranceSeconds = 300,
+        private readonly int $toleranceSeconds = 60,
     ) {}
 
     /**

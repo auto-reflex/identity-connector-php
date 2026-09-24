@@ -121,8 +121,9 @@ describe('refuses with 401', function () {
         postWebhook($this, $body, ['CONTENT_TYPE' => 'application/json'])->assertUnauthorized();
     });
 
-    it('an expired token, beyond the clock tolerance: a captured webhook cannot be replayed later', function () {
-        ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER, timestamp: Carbon::now()->getTimestamp() - 601);
+    it('an expired token, beyond the one-minute clock tolerance: a captured webhook cannot be replayed later', function () {
+        // Signé il y a 6 min 1 s : expiré depuis 61 s (5 min de validité, AR-089).
+        ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER, timestamp: Carbon::now()->getTimestamp() - 361);
 
         postWebhook($this, $body, $server)->assertUnauthorized();
     });
@@ -132,6 +133,13 @@ describe('refuses with 401', function () {
 
         postWebhook($this, $body, $server)->assertUnauthorized();
     });
+});
+
+it('accepts a token that expired less than a minute ago (clock tolerance)', function () {
+    // Signé il y a 5 min 30 s : expiré depuis 30 s, dans la tolérance d'une minute.
+    ['body' => $body, 'server' => $server] = $this->identity->webhook('account.suspended', WH_USER, timestamp: Carbon::now()->getTimestamp() - 330);
+
+    postWebhook($this, $body, $server)->assertNoContent();
 });
 
 it('gives nothing away in the refusal', function () {

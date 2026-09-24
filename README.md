@@ -179,7 +179,8 @@ Le connecteur expose `POST /identity/webhooks` (chemin configurable). Depuis la 
 configurer** : Identity signe chaque webhook avec sa clé (en-tête `Identity-Signature` = JWT RS256 de type
 `identity-webhook+jwt`), et le connecteur le vérifie avec le JWKS qu'il télécharge déjà pour les access tokens. Il contrôle
 l'émetteur, l'audience (un webhook destiné à un autre produit est refusé), la validité (5 min, plus la tolérance d'horloge)
-et l'empreinte du corps brut. Il écarte les rejeux et déclenche des événements Laravel locaux. Si les clés d'Identity sont
+et l'empreinte du corps brut. Un webhook vaut 5 minutes, plus une tolérance d'horloge d'une minute
+(`IDENTITY_WEBHOOK_TOLERANCE`, AR-089) ; Identity re-signe à chaque reprise. Il écarte les rejeux et déclenche des événements Laravel locaux. Si les clés d'Identity sont
 injoignables, il répond 503 et Identity réessaie. L'adresse de réception se saisit dans la console d'Identity
 (origine `api` de l'application).
 

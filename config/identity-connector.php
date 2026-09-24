@@ -62,11 +62,11 @@ return [
 
     /*
     | Réception des webhooks d'Identity (AR-053, AR-087). Signés par la clé d'Identity (JWKS) : aucun secret à configurer.
-    | `tolerance` : écart d'horloge admis (secondes). `replay_days` : durée pendant laquelle un événement déjà traité est refusé.
+    | `tolerance` : écart d'horloge admis (secondes) ; un webhook vaut 5 minutes, plus cette tolérance (AR-089). `replay_days` : durée pendant laquelle un événement déjà traité est refusé.
     */
     'webhooks' => [
         'path' => env('IDENTITY_WEBHOOK_PATH', 'identity/webhooks'),
-        'tolerance' => (int) env('IDENTITY_WEBHOOK_TOLERANCE', 300),
+        'tolerance' => (int) env('IDENTITY_WEBHOOK_TOLERANCE', 60),
         'replay_days' => (int) env('IDENTITY_WEBHOOK_REPLAY_DAYS', 7),
     ],
 
