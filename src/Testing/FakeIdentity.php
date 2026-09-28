@@ -2,6 +2,7 @@
 
 namespace AutoGteck\IdentityConnector\Testing;
 
+use AutoGteck\IdentityConnector\Web\WebLoginClient;
 use AutoGteck\IdentityConnector\Webhooks\WebhookSignature;
 use Carbon\Carbon;
 use Firebase\JWT\JWT;
@@ -434,7 +435,7 @@ final class FakeIdentity
     {
         $data = $request->data();
 
-        if (in_array($data['grant_type'] ?? null, ['authorization_code', 'refresh_token'], true)) {
+        if (in_array($data['grant_type'] ?? null, ['authorization_code', 'refresh_token', WebLoginClient::HANDOFF_GRANT], true)) {
             return $this->webGrants->token($data);
         }
 

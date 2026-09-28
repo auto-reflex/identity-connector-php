@@ -20,5 +20,5 @@ Route::middleware('web')->prefix('admin')->name('admin.')->group(function (): vo
         'token_subject' => Identity::token()?->subject,
     ]))->name('dashboard');
 
-    Route::middleware('identity.web')->get('anyone', fn () => response()->json(['id' => Identity::web()?->id]))->name('anyone');
+    Route::middleware('identity.web')->get('anyone', fn () => response()->json(['id' => Identity::web()?->id, 'email' => Identity::web()?->email]))->name('anyone');
 });

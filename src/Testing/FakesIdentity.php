@@ -14,13 +14,13 @@ trait FakesIdentity
 {
     /**
      * Ouvre une connexion web (AR-072) pour la personne : les requêtes suivantes du test passent `identity.web` comme si elle
-     * s'était connectée. `$roles` : ses rôles d'équipe dans le produit.
+     * s'était connectée. `$roles` : ses rôles d'équipe dans le produit ; `$email` : connu si l'application demande le scope `email`.
      *
      * @param  list<string>  $roles
      */
-    protected function actingAsWebIdentity(FakeIdentity $identity, string $userId, string $name = 'Camille Durand', array $roles = ['admin']): static
+    protected function actingAsWebIdentity(FakeIdentity $identity, string $userId, string $name = 'Camille Durand', array $roles = ['admin'], ?string $email = null): static
     {
-        return $this->withSession([WebSession::SESSION_KEY => $identity->web()->signIn($userId, $roles, $name)]);
+        return $this->withSession([WebSession::SESSION_KEY => $identity->web()->signIn($userId, $roles, $name, email: $email)]);
     }
 
     protected function fakeIdentity(string $audience, string $issuer = 'https://identity.test'): FakeIdentity

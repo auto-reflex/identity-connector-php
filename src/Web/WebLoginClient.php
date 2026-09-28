@@ -12,6 +12,8 @@ use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
  */
 final class WebLoginClient
 {
+    public const HANDOFF_GRANT = 'urn:autogteck:params:oauth:grant-type:handoff';
+
     public function __construct(
         private readonly IdentityClient $client,
         private readonly string $issuer,
@@ -50,6 +52,17 @@ final class WebLoginClient
             'code_verifier' => $verifier,
             'redirect_uri' => $redirectUri,
         ]);
+    }
+
+    /**
+     * Code de passage (AR-096), rendu à une application par Identity : une connexion ordinaire, sans que la personne se reconnecte.
+     *
+     * @throws IdentityUnavailable
+     * @throws IdentityRejected
+     */
+    public function exchangeHandoff(string $code): WebTokens
+    {
+        return $this->tokens(['grant_type' => self::HANDOFF_GRANT, 'code' => $code]);
     }
 
     /**

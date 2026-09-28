@@ -93,6 +93,8 @@ return [
         'client_id' => env('IDENTITY_WEB_CLIENT_ID'),
         'client_secret' => env('IDENTITY_WEB_CLIENT_SECRET'),
         'scope' => env('IDENTITY_WEB_SCOPE'),
+        // Scopes demandés en plus de `profile` et du scope d'accès, par exemple `['email']` pour écrire à la personne (lu dans `Identity::web()`).
+        'extra_scopes' => [],
         'redirect_uri' => env('IDENTITY_WEB_REDIRECT_URI'),
         'login_page' => null,
         'home' => '/',

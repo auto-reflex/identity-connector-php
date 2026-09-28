@@ -8,6 +8,7 @@ use AutoGteck\IdentityConnector\Client\IdentityUnavailable;
 use AutoGteck\IdentityConnector\Jwt\InvalidAccessToken;
 use AutoGteck\IdentityConnector\Jwt\JwtVerifier;
 use AutoGteck\IdentityConnector\Jwt\KeySetUnavailable;
+use AutoGteck\IdentityConnector\Profiles\IdentityUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,6 +86,45 @@ final class WebLogin
             return $this->failure('failed');
         }
 
+        return $this->open($request, $tokens, redirect()->intended($this->home()));
+    }
+
+    /**
+     * Code de passage (AR-096) : une application mobile ouvre cette application dans une WebView sans nouvelle connexion. Le code, rendu à
+     * l'application par Identity, s'échange ici contre une connexion ordinaire ; `next` (un chemin de cette application, jamais une autre
+     * adresse) est la page à ouvrir. Une connexion déjà ouverte dans ce navigateur est remplacée : le code dit qui est là maintenant.
+     */
+    public function handoff(Request $request): RedirectResponse
+    {
+        $code = $request->query('code');
+
+        if (! is_string($code) || $code === '') {
+            return $this->failure('failed');
+        }
+
+        $this->sessions->forget($request->session());
+
+        try {
+            $tokens = $this->client->exchangeHandoff($code);
+        } catch (IdentityUnavailable) {
+            return $this->failure('unavailable');
+        } catch (IdentityRejected) {
+            return $this->failure('failed');
+        }
+
+        $next = $request->query('next');
+        $local = is_string($next) && str_starts_with($next, '/') && ! str_starts_with($next, '//') && ! str_contains($next, '\\');
+
+        return $this->open($request, $tokens, redirect($local ? url($next) : $this->home()));
+    }
+
+    /**
+     * Vérifie les jetons reçus et ouvre la connexion, puis renvoie `$then`.
+     */
+    private function open(Request $request, WebTokens $tokens, RedirectResponse $then): RedirectResponse
+    {
+        $session = $request->session();
+
         try {
             $verified = $this->verifier->verify($tokens->accessToken);
         } catch (InvalidAccessToken) {
@@ -103,9 +143,10 @@ final class WebLogin
 
         // Session neuve avant d'y attacher la connexion : un identifiant de session connu d'avant la connexion ne sert plus.
         $session->regenerate();
-        $this->sessions->begin($session, new WebConnection($this->sessions->newId(), $tokens->accessToken, $tokens->refreshToken, $this->nameOf($tokens->accessToken), $verified));
+        $person = $this->personOf($tokens->accessToken);
+        $this->sessions->begin($session, new WebConnection($this->sessions->newId(), $tokens->accessToken, $tokens->refreshToken, $person?->name, $verified, $person?->email));
 
-        return redirect()->intended($this->home());
+        return $then;
     }
 
     public function logout(Request $request): RedirectResponse
@@ -165,12 +206,12 @@ final class WebLogin
         return redirect($this->loginPage())->with(self::ERROR_KEY, $error);
     }
 
-    private function nameOf(string $accessToken): ?string
+    private function personOf(string $accessToken): ?IdentityUser
     {
         try {
-            return $this->identity->userInfo($accessToken)->name;
+            return $this->identity->userInfo($accessToken);
         } catch (IdentityUnavailable|IdentityRejected) {
-            // Le nom n'est que de l'affichage : il ne doit jamais empêcher la connexion.
+            // Le nom et l'email ne sont que de l'affichage et du contact : ils ne doivent jamais empêcher la connexion.
             return null;
         }
     }

@@ -148,6 +148,12 @@ config(['identity-connector.web.login_page' => 'admin.login', 'identity-connecto
 - **Où sont les jetons** : chiffrés **dans le cache**, jamais dans la session (un refresh token ne sert qu'une fois : deux
   requêtes parallèles depuis une copie de session déconnecteraient la personne). La session ne porte qu'un identifiant.
   Activer `SESSION_ENCRYPT` reste recommandé.
+- **Scopes en plus** (≥ 0.11) : `config(['identity-connector.web.extra_scopes' => ['email']])` demande l'email ; il est lu par
+  `Identity::web()->email` (pour écrire à la personne). Le client doit avoir ce scope dans Identity.
+- **Code de passage** (≥ 0.11, AR-096) : `Route::identityWeb()` ajoute `GET auth/handoff?code=…&next=/chemin`. Une application mobile obtient
+  le code d'Identity (`POST /api/v1/handoffs`, connecteur TS : `requestHandoff()`) et ouvre cette adresse dans sa WebView : la connexion
+  s'ouvre sans rien demander, puis la personne arrive sur `next` (un chemin de l'application, jamais une autre adresse ; sinon `home`).
+  Le client web doit déclarer le grant de passage dans Identity. En test : `$identity->web()->handoff($userId)` rend un code.
 - Tests : `$this->actingAsWebIdentity($identity, $userId, roles: ['admin'])` ouvre une connexion ; pour jouer le parcours,
   `$identity->web()->approve($locationVersIdentity, $userId)` rend l'adresse de retour à suivre (`refreshCalls()`,
   `revokedTokens()`, `roles()`).

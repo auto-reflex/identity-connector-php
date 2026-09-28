@@ -182,11 +182,14 @@ class IdentityServiceProvider extends ServiceProvider
     }
 
     /**
-     * Les scopes demandés à la connexion : `profile` (le nom) et le scope d'accès du produit.
+     * Les scopes demandés à la connexion : `profile` (le nom), ceux que l'application ajoute (`web.extra_scopes`, ex. `email`) et le scope
+     * d'accès du produit.
      */
     private function scopes(): string
     {
-        return 'profile '.$this->webRequired('scope');
+        $extra = array_values(array_filter((array) config('identity-connector.web.extra_scopes', []), 'is_string'));
+
+        return implode(' ', array_unique(['profile', ...$extra, $this->webRequired('scope')]));
     }
 
     private function required(string $key): string

@@ -4,6 +4,7 @@ namespace AutoGteck\IdentityConnector\Testing;
 
 use AutoGteck\IdentityConnector\Jwt\JwtVerifier;
 use AutoGteck\IdentityConnector\Web\WebConnection;
+use AutoGteck\IdentityConnector\Web\WebLoginClient;
 use AutoGteck\IdentityConnector\Web\WebSession;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Support\Facades\Config;
@@ -22,6 +23,9 @@ final class FakeWebGrants
 {
     /** @var array<string, array{user: string, challenge: string, redirect_uri: string, scopes: list<string>}> */
     private array $codes = [];
+
+    /** @var array<string, array{user: string}> codes de passage encore valables (AR-096) */
+    private array $handoffs = [];
 
     /** @var array<string, array{user: string, scopes: list<string>, access: string}> refresh tokens encore valables */
     private array $refreshTokens = [];
@@ -79,6 +83,23 @@ final class FakeWebGrants
     }
 
     /**
+     * Un code de passage (AR-096) comme Identity le rendrait à une application pour cette personne : à présenter sur `auth/handoff?code=…`.
+     * Il ne sert qu'une fois.
+     *
+     * @param  list<string>|null  $roles  rôles délivrés à cette personne (défaut : aucun, ou ceux déjà fixés par `roles()`)
+     */
+    public function handoff(string $userId, ?array $roles = null): string
+    {
+        if ($roles !== null || ! isset($this->roles[$userId])) {
+            $this->roles[$userId] = $roles ?? [];
+        }
+
+        $this->handoffs[$code = Str::random(48)] = ['user' => $userId];
+
+        return $code;
+    }
+
+    /**
      * Les rôles que recevra la personne à sa prochaine émission (connexion ou refresh) : `[]` = rôle retiré.
      *
      * @param  list<string>  $roles
@@ -97,14 +118,14 @@ final class FakeWebGrants
      * @param  list<string>  $roles
      * @param  array<string, mixed>  $claims  remplace des claims du token (`exp`, `scope`…)
      */
-    public function signIn(string $userId, array $roles = ['admin'], string $name = 'Camille Durand', array $claims = []): string
+    public function signIn(string $userId, array $roles = ['admin'], string $name = 'Camille Durand', array $claims = [], ?string $email = null): string
     {
-        $this->identity->user($userId, $name);
+        $email === null ? $this->identity->user($userId, $name) : $this->identity->user($userId, $name, $email);
         $this->roles[$userId] = $roles;
         $tokens = $this->issue($userId, ['profile', $this->productScope()], $claims);
         $verified = app(JwtVerifier::class)->verify($tokens['access_token']);
         $sessions = app(WebSession::class);
-        $connection = new WebConnection($sessions->newId(), $tokens['access_token'], $tokens['refresh_token'], $name, $verified);
+        $connection = new WebConnection($sessions->newId(), $tokens['access_token'], $tokens['refresh_token'], $name, $verified, $email);
         $sessions->store($connection);
 
         return $connection->id;
@@ -143,7 +164,11 @@ final class FakeWebGrants
             return Http::response(['error' => 'invalid_client'], 401);
         }
 
-        return ($data['grant_type'] ?? null) === 'authorization_code' ? $this->exchange($data) : $this->refresh($data);
+        return match ($data['grant_type'] ?? null) {
+            'authorization_code' => $this->exchange($data),
+            WebLoginClient::HANDOFF_GRANT => $this->exchangeHandoff($data),
+            default => $this->refresh($data),
+        };
     }
 
     /**
@@ -184,6 +209,22 @@ final class FakeWebGrants
         }
 
         return Http::response($this->body($this->issue($grant['user'], $grant['scopes'])));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return PromiseInterface
+     */
+    private function exchangeHandoff(array $data)
+    {
+        $grant = $this->handoffs[(string) ($data['code'] ?? '')] ?? null;
+        unset($this->handoffs[(string) ($data['code'] ?? '')]);
+
+        if ($grant === null || $this->identity->isRevoked($grant['user'])) {
+            return Http::response(['error' => 'invalid_grant'], 400);
+        }
+
+        return Http::response($this->body($this->issue($grant['user'], ['profile', 'email', $this->productScope()])));
     }
 
     /**

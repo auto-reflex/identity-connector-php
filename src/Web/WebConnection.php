@@ -16,16 +16,17 @@ final readonly class WebConnection
         public string $refreshToken,
         public ?string $name,
         public VerifiedToken $token,
+        public ?string $email = null,
     ) {}
 
     public function identity(): WebIdentity
     {
-        return new WebIdentity($this->token->subject, $this->name, $this->token->roles, $this->token->expiresAt);
+        return new WebIdentity($this->token->subject, $this->name, $this->token->roles, $this->token->expiresAt, $this->email);
     }
 
     public function withTokens(WebTokens $tokens, VerifiedToken $verified): self
     {
-        return new self($this->id, $tokens->accessToken, $tokens->refreshToken, $this->name, $verified);
+        return new self($this->id, $tokens->accessToken, $tokens->refreshToken, $this->name, $verified, $this->email);
     }
 
     /**
@@ -38,6 +39,7 @@ final readonly class WebConnection
             'access_token' => $this->accessToken,
             'refresh_token' => $this->refreshToken,
             'name' => $this->name,
+            'email' => $this->email,
             'token' => [
                 'sub' => $this->token->subject,
                 'aud' => $this->token->audience,
@@ -77,6 +79,7 @@ final readonly class WebConnection
                 expiresAt: $token['exp'],
                 roles: array_values(array_filter($token['roles'], 'is_string')),
             ),
+            is_string($data['email'] ?? null) ? $data['email'] : null,
         );
     }
 }

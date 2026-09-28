@@ -3,13 +3,14 @@
 namespace AutoGteck\IdentityConnector\Web;
 
 use AutoGteck\IdentityConnector\Http\Controllers\WebCallbackController;
+use AutoGteck\IdentityConnector\Http\Controllers\WebHandoffController;
 use AutoGteck\IdentityConnector\Http\Controllers\WebLoginController;
 use AutoGteck\IdentityConnector\Http\Controllers\WebLogoutController;
 use Illuminate\Support\Facades\Route;
 use LogicException;
 
 /**
- * Les trois routes de connexion web (AR-072). L'application les enregistre elle-même DANS son groupe (préfixe, domaine, middleware,
+ * Les routes de connexion web (AR-072) : redirect, callback, logout, et handoff (AR-096). L'application les enregistre elle-même DANS son groupe (préfixe, domaine, middleware,
  * préfixe de noms) : le paquet n'a rien à deviner. Les noms portent donc le préfixe du groupe ; `name()` retrouve le vrai nom.
  */
 final class WebRoutes
@@ -19,6 +20,8 @@ final class WebRoutes
     public const CALLBACK = 'identity.web.callback';
 
     public const LOGOUT = 'identity.web.logout';
+
+    public const HANDOFF = 'identity.web.handoff';
 
     /**
      * À appeler dans un groupe qui porte les middlewares `web` (session, CSRF).
@@ -30,6 +33,8 @@ final class WebRoutes
         Route::get($path.'/redirect', WebLoginController::class)->middleware('throttle:identity-web')->name(self::LOGIN);
         Route::get($path.'/callback', WebCallbackController::class)->middleware('throttle:identity-web')->name(self::CALLBACK);
         Route::post($path.'/logout', WebLogoutController::class)->name(self::LOGOUT);
+        // Code de passage d'une application mobile (AR-096) : sans effet tant qu'Identity n'autorise pas ce client à en recevoir.
+        Route::get($path.'/handoff', WebHandoffController::class)->middleware('throttle:identity-web')->name(self::HANDOFF);
     }
 
     /**

@@ -3,7 +3,8 @@
 namespace AutoGteck\IdentityConnector\Web;
 
 /**
- * La personne connectée à une application web (Blade) : ce qu'il faut pour l'afficher et décider de ses droits.
+ * La personne connectée à une application web (Blade) : ce qu'il faut pour l'afficher et décider de ses droits. `email` n'est connu que si
+ * l'application demande le scope `email` (`web.extra_scopes`).
  * Lecture seule : rien ici n'autorise de soi-même, les rôles viennent du token vérifié (AR-066).
  */
 final readonly class WebIdentity
@@ -16,6 +17,7 @@ final readonly class WebIdentity
         public ?string $name,
         public array $roles,
         public int $expiresAt,
+        public ?string $email = null,
     ) {}
 
     public function hasRole(string $role): bool
