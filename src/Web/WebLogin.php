@@ -115,7 +115,8 @@ final class WebLogin
         $next = $request->query('next');
         $local = is_string($next) && str_starts_with($next, '/') && ! str_starts_with($next, '//') && ! str_contains($next, '\\');
 
-        return $this->open($request, $tokens, redirect($local ? url($next) : $this->home()));
+        // `url('/')` puis le chemin tel quel : `url('/?x')` perdrait la barre (`https://hote?x`).
+        return $this->open($request, $tokens, redirect($local ? rtrim(url('/'), '/').$next : $this->home()));
     }
 
     /**

@@ -22,6 +22,13 @@ it('opens a connection from a handoff code and lands on the requested page of th
     $this->getJson('/admin/anyone')->assertOk()->assertJson(['id' => HANDOFF_USER, 'email' => 'camille@example.test']);
 });
 
+it('keeps the path of `next` as it is, root and query included', function () {
+    $code = $this->identity->web()->handoff(HANDOFF_USER);
+
+    $this->get('/admin/auth/handoff?'.http_build_query(['code' => $code, 'next' => '/?product=autoworky']))
+        ->assertRedirect('http://localhost/?product=autoworky');
+});
+
 it('never sends the person to another site, whatever `next` says', function (string $next) {
     $code = $this->identity->web()->handoff(HANDOFF_USER);
 
